@@ -1,7 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-// 這是您的 Firebase 設定 (已經幫您填好)
+// Your web app's Firebase configuration
 const firebaseConfig = {
   apiKey: "AIzaSyBAInv4O5MVcOE3kb8ztIM9U2Q1OOmnjJk",
   authDomain: "mission-ready-30e27.firebaseapp.com",
@@ -12,11 +12,12 @@ const firebaseConfig = {
   measurementId: "G-QQ21XL2Y9H"
 };
 
-// 初始化 Firebase
+// Initialize Firebase
 const app = initializeApp(firebaseConfig);
+// const analytics = getAnalytics(app); // 暫時移除以避免錯誤
 const db = getFirestore(app);
 
-// 雲端同步功能模組
+// 雲端同步功能
 export const cloudSync = {
   // 上傳資料
   upload: async (userId: string, data: any) => {
