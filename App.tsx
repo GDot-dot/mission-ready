@@ -25,8 +25,6 @@ export default function App() {
   useEffect(() => {
     const savedUserId = localStorage.getItem('mission_ready_active_user_id');
     const users = JSON.parse(localStorage.getItem('mission_ready_users') || '[]');
-    // 在使用雲端驗證的情況下，我們僅從 local storage 恢復基本的 session
-    // 完整的驗證邏輯在 Auth 組件中處理
     if (savedUserId && users.length > 0) {
       const activeUser = users.find((u: any) => u.id === savedUserId);
       if (activeUser) {
@@ -146,7 +144,7 @@ export default function App() {
     }
   };
 
-  const handleCloudUpload = async () => {
+  const handleUploadCloud = async () => {
     if (!user) return;
     setIsSyncing(true);
     const data = {
@@ -248,14 +246,14 @@ export default function App() {
                   ) : (
                     <>
                         <button 
-                            onClick={handleCloudUpload}
+                            onClick={handleUploadCloud}
                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="上傳至雲端 (備份)"
                         >
                             <UploadCloud size={20} />
                         </button>
                         <button 
-                            onClick={handleDownloadCloud}
+                            onClick={handleCloudDownload}
                             className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="從雲端下載 (還原)"
                         >
