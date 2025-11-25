@@ -1,0 +1,5 @@
+{
+  "name": "Mission Ready: Business Trip Checklist",
+  "description": "A professional inventory and trip planning application designed for engineering field trips. Manage hardware, tools, and software versions with a pull-based checklist system.",
+  "requestFramePermissions": []
+}
