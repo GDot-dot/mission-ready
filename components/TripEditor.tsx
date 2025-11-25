@@ -1,8 +1,8 @@
 
 import React, { useState } from 'react';
-import { InventoryItem, Trip, TripItem, Category, InventoryFolder, InventoryGroup } from '../types';
-import { CATEGORY_COLORS } from '../constants';
-import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, Filter } from 'lucide-react';
+import { InventoryItem, Trip, TripItem, Category, InventoryFolder, InventoryGroup, TripGroup } from '../types';
+import { CATEGORY_COLORS, DEFAULT_TRIP_GROUP_ID } from '../constants';
+import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, Filter, LayoutGrid, X, Edit2 } from 'lucide-react';
 
 interface TripEditorProps {
   inventory: InventoryItem[];
@@ -17,7 +17,12 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const [tripName, setTripName] = useState(currentTrip?.name || `出差行程 ${new Date().toLocaleDateString()}`);
   const [tripDate, setTripDate] = useState(currentTrip?.date || new Date().toISOString().split('T')[0]);
   const [tripItems, setTripItems] = useState<TripItem[]>(currentTrip?.items || []);
+  const [tripGroups, setTripGroups] = useState<TripGroup[]>(currentTrip?.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }]);
   
+  const [activeTripGroupId, setActiveTripGroupId] = useState<string>(tripGroups[0].id);
+  const [newTripGroupName, setNewTripGroupName] = useState('');
+  const [isAddingGroup, setIsAddingGroup] = useState(false);
+
   // Inventory Filtering
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
@@ -28,6 +33,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
     const newItem: TripItem = {
       id: Math.random().toString(36).substring(2, 9),
       inventoryId: invItem.id,
+      tripGroupId: activeTripGroupId, // Add to currently selected group
       name: invItem.name,
       category: invItem.category,
       qty: 1,
@@ -47,6 +53,31 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
     ));
   };
 
+  const handleAddTripGroup = () => {
+    if(!newTripGroupName.trim()) return;
+    const newId = Math.random().toString(36).substring(2, 9);
+    const newGroup: TripGroup = { id: newId, name: newTripGroupName };
+    setTripGroups(prev => [...prev, newGroup]);
+    setActiveTripGroupId(newId);
+    setNewTripGroupName('');
+    setIsAddingGroup(false);
+  };
+
+  const handleDeleteTripGroup = (e: React.MouseEvent, groupId: string) => {
+    e.stopPropagation();
+    if(tripGroups.length <= 1) {
+        alert("至少保留一個群組");
+        return;
+    }
+    if(window.confirm("刪除此群組會連同裡面的物品一起移除，確定嗎？")) {
+        setTripGroups(prev => prev.filter(g => g.id !== groupId));
+        setTripItems(prev => prev.filter(i => i.tripGroupId !== groupId));
+        if(activeTripGroupId === groupId) {
+            setActiveTripGroupId(tripGroups[0].id);
+        }
+    }
+  };
+
   const handleSave = () => {
     if (!tripName.trim()) {
       alert("請輸入行程名稱");
@@ -62,6 +93,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
       name: tripName,
       date: tripDate,
       status: currentTrip?.status || 'planning',
+      groups: tripGroups,
       items: tripItems
     };
     onSave(updatedTrip);
@@ -79,6 +111,9 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const availableGroups = filterFolder === 'ALL' 
     ? groups 
     : groups.filter(g => g.folderId === filterFolder);
+
+  // Filter items for the current view (right side)
+  const activeTripItems = tripItems.filter(item => item.tripGroupId === activeTripGroupId);
 
   return (
     <div className="h-[calc(100vh-100px)] flex flex-col gap-4">
@@ -124,8 +159,11 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Briefcase className="text-slate-500" size={20} />
-                <h3 className="font-bold text-slate-700">物品庫 (點擊加入)</h3>
+                <h3 className="font-bold text-slate-700">物品庫</h3>
               </div>
+              <span className="text-xs text-blue-600 bg-blue-50 px-2 py-1 rounded-full">
+                點擊加入 → {tripGroups.find(g => g.id === activeTripGroupId)?.name}
+              </span>
             </div>
 
             <div className="flex flex-col md:flex-row gap-2">
@@ -210,32 +248,71 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
           </div>
         </div>
 
-        {/* Right: Trip Items */}
+        {/* Right: Trip Items & Grouping */}
         <div className="flex-1 bg-white rounded-xl border border-slate-200 shadow-sm flex flex-col overflow-hidden">
-          <div className="p-4 border-b border-slate-100 bg-slate-50 flex justify-between items-center">
-            <div className="flex items-center gap-2">
-              <div className="bg-blue-600 text-white text-xs font-bold px-2 py-1 rounded-full">{tripItems.length}</div>
-              <h3 className="font-bold text-slate-700">本次攜帶清單</h3>
-            </div>
-            <button 
-              onClick={() => setTripItems([])}
-              className="text-xs text-red-500 hover:text-red-700 hover:underline"
-            >
-              全部清空
-            </button>
+          {/* Trip Groups Tab Bar */}
+          <div className="p-2 border-b border-slate-100 bg-slate-50 flex overflow-x-auto gap-2 scrollbar-hide items-center">
+             {tripGroups.map(group => (
+                 <div 
+                    key={group.id}
+                    onClick={() => setActiveTripGroupId(group.id)}
+                    className={`
+                        flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all whitespace-nowrap border
+                        ${activeTripGroupId === group.id 
+                            ? 'bg-white border-blue-200 text-blue-700 shadow-sm font-medium' 
+                            : 'bg-slate-100 border-transparent text-slate-500 hover:bg-white hover:border-slate-200'}
+                    `}
+                 >
+                    <span>{group.name}</span>
+                    <span className="text-xs bg-opacity-20 bg-slate-500 px-1.5 rounded-full">
+                        {tripItems.filter(i => i.tripGroupId === group.id).length}
+                    </span>
+                    {activeTripGroupId === group.id && (
+                        <button 
+                            onClick={(e) => handleDeleteTripGroup(e, group.id)}
+                            className="ml-1 p-0.5 hover:text-red-500 rounded hover:bg-red-50"
+                        >
+                            <X size={12} />
+                        </button>
+                    )}
+                 </div>
+             ))}
+             
+             {isAddingGroup ? (
+                 <div className="flex items-center gap-1 bg-white p-1 rounded-lg border border-blue-200 shadow-sm animate-in fade-in">
+                    <input 
+                        autoFocus
+                        className="w-24 text-sm px-2 py-0.5 outline-none"
+                        placeholder="群組名稱"
+                        value={newTripGroupName}
+                        onChange={e => setNewTripGroupName(e.target.value)}
+                        onKeyDown={e => e.key === 'Enter' && handleAddTripGroup()}
+                    />
+                    <button onClick={handleAddTripGroup} className="text-blue-600 hover:bg-blue-50 p-1 rounded"><Plus size={14}/></button>
+                    <button onClick={() => setIsAddingGroup(false)} className="text-slate-400 hover:text-slate-600 p-1"><X size={14}/></button>
+                 </div>
+             ) : (
+                 <button 
+                    onClick={() => setIsAddingGroup(true)}
+                    className="p-1.5 rounded-lg text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
+                    title="新增分組"
+                 >
+                    <Plus size={18} />
+                 </button>
+             )}
           </div>
-          
-          <div className="flex-1 overflow-y-auto p-4 space-y-3">
-            {tripItems.length === 0 ? (
+
+          <div className="flex-1 overflow-y-auto p-4 space-y-3 bg-slate-50/50">
+            {activeTripItems.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-slate-300">
                 <Briefcase size={48} className="mb-4 opacity-50" />
-                <p>左側點擊物品加入清單</p>
+                <p>此分組是空的，請從左側加入物品</p>
               </div>
             ) : (
-              tripItems.map((item) => (
-                <div key={item.id} className="flex gap-3 items-center bg-white p-3 rounded-lg border border-slate-200 shadow-sm animate-in fade-in slide-in-from-left-2 duration-300">
+              activeTripItems.map((item) => (
+                <div key={item.id} className="flex gap-3 items-start bg-white p-3 rounded-lg border border-slate-200 shadow-sm animate-in fade-in slide-in-from-left-2 duration-300">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-2">
                       <span className={`text-[10px] px-1.5 py-0.5 rounded border ${CATEGORY_COLORS[item.category]} whitespace-nowrap`}>
                         {item.category.split(' ')[0]}
                       </span>
@@ -243,18 +320,18 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
                     </div>
                     <div className="flex gap-2">
                       <div className="flex-1">
-                        <input
-                          type="text"
+                        <textarea
                           value={item.version}
                           onChange={(e) => updateItem(item.id, 'version', e.target.value)}
-                          placeholder="版本/備註..."
-                          className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none"
+                          placeholder="輸入備註 (可換行)..."
+                          rows={2}
+                          className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
                         />
                       </div>
                     </div>
                   </div>
                   
-                  <div className="flex flex-col items-end gap-1">
+                  <div className="flex flex-col items-end gap-2">
                     <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
                        <input
                         type="number"

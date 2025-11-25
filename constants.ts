@@ -6,6 +6,15 @@ const uid = () => Math.random().toString(36).substring(2, 9);
 
 export const DEFAULT_FOLDER_ID = 'folder_default';
 export const DEFAULT_GROUP_ID = 'group_default';
+export const DEFAULT_TRIP_GROUP_ID = 'trip_group_default';
+
+export const CATEGORY_COLORS: Record<Category, string> = {
+  [Category.Tools]: 'bg-amber-50 text-amber-700 border-amber-200',
+  [Category.Hardware]: 'bg-blue-50 text-blue-700 border-blue-200',
+  [Category.Cables]: 'bg-purple-50 text-purple-700 border-purple-200',
+  [Category.Software]: 'bg-emerald-50 text-emerald-700 border-emerald-200',
+  [Category.Docs]: 'bg-slate-50 text-slate-700 border-slate-200'
+};
 
 export const INITIAL_FOLDERS: InventoryFolder[] = [
   { id: DEFAULT_FOLDER_ID, name: '出差用品 (Business)', isSystem: true },
@@ -57,19 +66,4 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Software, name: 'ROS_AP', defaultVersion: '0730' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Software, name: 'OSG_DFU', defaultVersion: '0624' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Software, name: 'OSG_AP', defaultVersion: '0723' },
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Software, name: 'OSG', defaultVersion: '085' },
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Software, name: 'ROS', defaultVersion: '109' },
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Software, name: 'Ozone_FW', defaultVersion: '079' },
-
-  // --- 雜項 Docs ---
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Docs, name: 'QRcode (流水號)', defaultVersion: '126' },
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: Category.Docs, name: '流水號二', defaultVersion: '__' },
 ];
-
-export const CATEGORY_COLORS: Record<Category, string> = {
-  [Category.Tools]: 'bg-orange-100 text-orange-800 border-orange-200',
-  [Category.Hardware]: 'bg-blue-100 text-blue-800 border-blue-200',
-  [Category.Cables]: 'bg-purple-100 text-purple-800 border-purple-200',
-  [Category.Software]: 'bg-green-100 text-green-800 border-green-200',
-  [Category.Docs]: 'bg-gray-100 text-gray-800 border-gray-200',
-};

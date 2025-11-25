@@ -35,9 +35,15 @@ export interface InventoryItem {
   defaultVersion?: string; // Pre-fill value for version/note
 }
 
+export interface TripGroup {
+  id: string;
+  name: string;
+}
+
 export interface TripItem {
   id: string; // Unique ID for this specific item in the trip
   inventoryId: string;
+  tripGroupId: string; // Belongs to a specific group within the trip (e.g., "Bag 1")
   name: string;
   category: Category;
   qty: number;
@@ -51,6 +57,7 @@ export interface Trip {
   name: string;
   date: string;
   status: 'planning' | 'active' | 'completed';
+  groups: TripGroup[]; // List of groups defined for this trip
   items: TripItem[];
 }
 

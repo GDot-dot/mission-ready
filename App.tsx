@@ -1,9 +1,10 @@
+
 import React, { useState, useEffect } from 'react';
 import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
 import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
-import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from './constants';
+import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup } from './types';
 import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2 } from 'lucide-react';
 // 使用相對路徑引入，避免 alias 設定問題
@@ -58,7 +59,18 @@ export default function App() {
 
     // Trips
     const savedTrips = localStorage.getItem(`mission_ready_trips_${userId}`);
-    setTrips(savedTrips ? JSON.parse(savedTrips) : []);
+    let loadedTrips: Trip[] = savedTrips ? JSON.parse(savedTrips) : [];
+    
+    // Trip Data Migration: Ensure groups exist
+    loadedTrips = loadedTrips.map(trip => ({
+      ...trip,
+      groups: trip.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }],
+      items: trip.items.map(item => ({
+        ...item,
+        tripGroupId: item.tripGroupId || DEFAULT_TRIP_GROUP_ID
+      }))
+    }));
+    setTrips(loadedTrips);
 
     // Folders
     const savedFolders = localStorage.getItem(`mission_ready_folders_${userId}`);
@@ -144,7 +156,7 @@ export default function App() {
     }
   };
 
-  const handleUploadCloud = async () => {
+  const handleCloudUpload = async () => {
     if (!user) return;
     setIsSyncing(true);
     const data = {
@@ -179,8 +191,21 @@ export default function App() {
         if (result.success && result.data) {
             const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups } = result.data;
             
+            // Migration during cloud sync as well
+            let migratedTrips = newTrips;
+            if (migratedTrips) {
+                migratedTrips = migratedTrips.map((trip: any) => ({
+                    ...trip,
+                    groups: trip.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }],
+                    items: trip.items.map((item: any) => ({
+                        ...item,
+                        tripGroupId: item.tripGroupId || DEFAULT_TRIP_GROUP_ID
+                    }))
+                }));
+            }
+
             if(newInv) setInventory(newInv);
-            if(newTrips) setTrips(newTrips);
+            if(migratedTrips) setTrips(migratedTrips);
             if(newFolders) setFolders(newFolders);
             if(newGroups) setGroups(newGroups);
             
@@ -246,7 +271,7 @@ export default function App() {
                   ) : (
                     <>
                         <button 
-                            onClick={handleUploadCloud}
+                            onClick={handleCloudUpload}
                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="上傳至雲端 (備份)"
                         >
