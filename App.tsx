@@ -5,7 +5,7 @@ import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
 import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup } from './types';
-import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, CloudUpload, CloudDownload, Loader2 } from 'lucide-react';
+import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2 } from 'lucide-react';
 // 使用相對路徑引入，避免 alias 設定問題
 import { cloudSync } from './firebaseConfig';
 
@@ -144,7 +144,7 @@ export default function App() {
     }
   };
 
-  const handleCloudUpload = async () => {
+  const handleUploadCloud = async () => {
     if (!user) return;
     setIsSyncing(true);
     const data = {
@@ -169,7 +169,7 @@ export default function App() {
     }
   };
 
-  const handleCloudDownload = async () => {
+  const handleDownloadCloud = async () => {
     if (!user) return;
     if (!window.confirm("⚠️ 警告：這將會用雲端的資料「覆蓋」您目前電腦上的所有資料。\n\n確定要繼續嗎？")) return;
 
@@ -246,18 +246,18 @@ export default function App() {
                   ) : (
                     <>
                         <button 
-                            onClick={handleCloudUpload}
+                            onClick={handleUploadCloud}
                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="上傳至雲端 (備份)"
                         >
-                            <CloudUpload size={20} />
+                            <UploadCloud size={20} />
                         </button>
                         <button 
-                            onClick={handleCloudDownload}
+                            onClick={handleDownloadCloud}
                             className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
                             title="從雲端下載 (還原)"
                         >
-                            <CloudDownload size={20} />
+                            <DownloadCloud size={20} />
                         </button>
                     </>
                   )}
