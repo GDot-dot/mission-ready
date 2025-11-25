@@ -6,7 +6,7 @@ import { Auth } from './components/Auth';
 import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup } from './types';
 import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, CloudUpload, CloudDownload, Loader2 } from 'lucide-react';
-// @ts-ignore - Assuming firebaseConfig.ts is created by user
+// 使用相對路徑引入，避免 alias 設定問題
 import { cloudSync } from './firebaseConfig';
 
 export default function App() {

@@ -1,23 +1,7 @@
-// firebaseConfig.ts
 import { initializeApp } from "firebase/app";
 import { getFirestore, doc, getDoc, setDoc } from "firebase/firestore";
 
-// TODO: 請將您的 Firebase Config 貼在這裡 (覆蓋下方內容)
-const firebaseConfig = {
-  apiKey: "AIzaSyD...", // 把您網頁上複製的那一整段貼過來
-  authDomain: "mission-ready-xxx.firebaseapp.com",
-  projectId: "mission-ready-xxx",
-  storageBucket: "mission-ready-xxx.appspot.com",
-  messagingSenderId: "...",
-  appId: "..."
-};// Import the functions you need from the SDKs you need
-import { initializeApp } from "firebase/app";
-import { getAnalytics } from "firebase/analytics";
-// TODO: Add SDKs for Firebase products that you want to use
-// https://firebase.google.com/docs/web/setup#available-libraries
-
-// Your web app's Firebase configuration
-// For Firebase JS SDK v7.20.0 and later, measurementId is optional
+// 這是您的 Firebase 設定 (已經幫您填好)
 const firebaseConfig = {
   apiKey: "AIzaSyBAInv4O5MVcOE3kb8ztIM9U2Q1OOmnjJk",
   authDomain: "mission-ready-30e27.firebaseapp.com",
@@ -28,12 +12,11 @@ const firebaseConfig = {
   measurementId: "G-QQ21XL2Y9H"
 };
 
-// Initialize Firebase
+// 初始化 Firebase
 const app = initializeApp(firebaseConfig);
-const analytics = getAnalytics(app);
 const db = getFirestore(app);
 
-// 雲端同步功能
+// 雲端同步功能模組
 export const cloudSync = {
   // 上傳資料
   upload: async (userId: string, data: any) => {
