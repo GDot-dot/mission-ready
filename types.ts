@@ -1,3 +1,4 @@
+
 export enum Category {
   Tools = "燒錄/工具 (Tools)",
   Hardware = "硬體/PCBA (Hardware)",
@@ -18,9 +19,17 @@ export interface InventoryFolder {
   isSystem?: boolean; // For 'Default' folder that shouldn't be deleted
 }
 
+export interface InventoryGroup {
+  id: string;
+  folderId: string; // Links group to a folder
+  name: string;
+  isSystem?: boolean; // For 'Default' group
+}
+
 export interface InventoryItem {
   id: string;
   folderId: string; // Links item to a folder
+  groupId: string;  // Links item to a user-defined group
   name: string;
   category: Category;
   defaultVersion?: string; // Pre-fill value for version/note

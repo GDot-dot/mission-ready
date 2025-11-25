@@ -1,17 +1,19 @@
+
 import React, { useState } from 'react';
-import { InventoryItem, Trip, TripItem, Category, InventoryFolder } from '../types';
+import { InventoryItem, Trip, TripItem, Category, InventoryFolder, InventoryGroup } from '../types';
 import { CATEGORY_COLORS } from '../constants';
-import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, Folder } from 'lucide-react';
+import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, Filter } from 'lucide-react';
 
 interface TripEditorProps {
   inventory: InventoryItem[];
   folders: InventoryFolder[];
+  groups: InventoryGroup[];
   currentTrip: Trip | null;
   onSave: (trip: Trip) => void;
   onCancel: () => void;
 }
 
-export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, currentTrip, onSave, onCancel }) => {
+export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, currentTrip, onSave, onCancel }) => {
   const [tripName, setTripName] = useState(currentTrip?.name || `出差行程 ${new Date().toLocaleDateString()}`);
   const [tripDate, setTripDate] = useState(currentTrip?.date || new Date().toISOString().split('T')[0]);
   const [tripItems, setTripItems] = useState<TripItem[]>(currentTrip?.items || []);
@@ -20,6 +22,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, curr
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterFolder, setFilterFolder] = useState<string>('ALL');
+  const [filterGroup, setFilterGroup] = useState<string>('ALL');
 
   const handleAddItem = (invItem: InventoryItem) => {
     const newItem: TripItem = {
@@ -68,8 +71,14 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, curr
     const matchesSearch = item.name.toLowerCase().includes(searchTerm.toLowerCase());
     const matchesCategory = filterCategory === 'ALL' || item.category === filterCategory;
     const matchesFolder = filterFolder === 'ALL' || item.folderId === filterFolder;
-    return matchesSearch && matchesCategory && matchesFolder;
+    const matchesGroup = filterGroup === 'ALL' || item.groupId === filterGroup;
+    return matchesSearch && matchesCategory && matchesFolder && matchesGroup;
   });
+
+  // Get available groups based on selected folder
+  const availableGroups = filterFolder === 'ALL' 
+    ? groups 
+    : groups.filter(g => g.folderId === filterFolder);
 
   return (
     <div className="h-[calc(100vh-100px)] flex flex-col gap-4">
@@ -119,7 +128,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, curr
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="flex flex-col md:flex-row gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input
@@ -130,14 +139,29 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, curr
                   className="w-full pl-9 pr-3 py-1.5 bg-white border border-slate-200 rounded text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none"
                 />
               </div>
+              
               <select 
                 value={filterFolder}
-                onChange={(e) => setFilterFolder(e.target.value)}
-                className="max-w-[150px] bg-white border border-slate-200 rounded px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
+                onChange={(e) => {
+                    setFilterFolder(e.target.value);
+                    setFilterGroup('ALL'); // Reset group when folder changes
+                }}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none"
               >
                 <option value="ALL">📁 所有資料夾</option>
                 {folders.map(f => (
                   <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+
+              <select 
+                value={filterGroup}
+                onChange={(e) => setFilterGroup(e.target.value)}
+                className="bg-white border border-slate-200 rounded px-2 py-1 text-sm text-slate-700 focus:ring-1 focus:ring-blue-500 outline-none max-w-[150px]"
+              >
+                <option value="ALL">🗃️ 所有群組</option>
+                {availableGroups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
                 ))}
               </select>
             </div>
@@ -180,7 +204,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, curr
             ))}
             {filteredInventory.length === 0 && (
               <div className="col-span-full text-center text-slate-400 text-sm py-8">
-                找不到物品，請檢查搜尋條件或資料夾
+                找不到物品，請檢查搜尋條件
               </div>
             )}
           </div>

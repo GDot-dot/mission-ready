@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
 import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
-import { INITIAL_INVENTORY, INITIAL_FOLDERS, DEFAULT_FOLDER_ID } from './constants';
-import { InventoryItem, Trip, ViewState, User, InventoryFolder } from './types';
+import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from './constants';
+import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup } from './types';
 import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon } from 'lucide-react';
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
   const [inventory, setInventory] = useState<InventoryItem[]>([]);
   const [trips, setTrips] = useState<Trip[]>([]);
   const [folders, setFolders] = useState<InventoryFolder[]>([]);
+  const [groups, setGroups] = useState<InventoryGroup[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
 
   // --- Auth Check on Mount ---
@@ -39,14 +41,16 @@ export default function App() {
     
     if (savedInventory) {
       loadedInventory = JSON.parse(savedInventory);
-      // Migration for old items without folderId
-      const needsMigration = loadedInventory.some(i => !i.folderId);
-      if (needsMigration) {
-        loadedInventory = loadedInventory.map(i => i.folderId ? i : { ...i, folderId: DEFAULT_FOLDER_ID });
-      }
+      // Migration for old items without folderId or groupId
+      loadedInventory = loadedInventory.map(i => {
+        return {
+          ...i,
+          folderId: i.folderId || DEFAULT_FOLDER_ID,
+          groupId: i.groupId || DEFAULT_GROUP_ID
+        };
+      });
     } else {
-      // If new user, give them default initial inventory linked to default folder
-      loadedInventory = INITIAL_INVENTORY; // INITIAL_INVENTORY now has DEFAULT_FOLDER_ID
+      loadedInventory = INITIAL_INVENTORY;
     }
     setInventory(loadedInventory);
 
@@ -57,6 +61,10 @@ export default function App() {
     // Folders
     const savedFolders = localStorage.getItem(`mission_ready_folders_${userId}`);
     setFolders(savedFolders ? JSON.parse(savedFolders) : INITIAL_FOLDERS);
+
+    // Groups
+    const savedGroups = localStorage.getItem(`mission_ready_groups_${userId}`);
+    setGroups(savedGroups ? JSON.parse(savedGroups) : INITIAL_GROUPS);
   };
 
   // Persist data when it changes (only if logged in)
@@ -75,6 +83,11 @@ export default function App() {
     localStorage.setItem(`mission_ready_folders_${user.id}`, JSON.stringify(folders));
   }, [folders, user]);
 
+  useEffect(() => {
+    if (!user) return;
+    localStorage.setItem(`mission_ready_groups_${user.id}`, JSON.stringify(groups));
+  }, [groups, user]);
+
   // --- Handlers ---
 
   const handleLogin = (loggedInUser: User) => {
@@ -90,6 +103,7 @@ export default function App() {
     setInventory([]);
     setTrips([]);
     setFolders([]);
+    setGroups([]);
   };
 
   const handleSaveTrip = (updatedTrip: Trip) => {
@@ -278,6 +292,8 @@ export default function App() {
                     setItems={setInventory} 
                     folders={folders}
                     setFolders={setFolders}
+                    groups={groups}
+                    setGroups={setGroups}
                 />
             </div>
         )}
@@ -288,6 +304,7 @@ export default function App() {
                 <TripEditor 
                     inventory={inventory} 
                     folders={folders}
+                    groups={groups}
                     currentTrip={activeTrip}
                     onSave={handleSaveTrip}
                     onCancel={() => setView(activeTripId ? 'TRIP_RUN' : 'DASHBOARD')}
