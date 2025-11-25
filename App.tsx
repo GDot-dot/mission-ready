@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
@@ -6,7 +5,9 @@ import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
 import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup } from './types';
-import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon } from 'lucide-react';
+import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, CloudUpload, CloudDownload, Loader2 } from 'lucide-react';
+// @ts-ignore - Assuming firebaseConfig.ts is created by user
+import { cloudSync } from './firebaseConfig';
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -18,6 +19,7 @@ export default function App() {
   const [folders, setFolders] = useState<InventoryFolder[]>([]);
   const [groups, setGroups] = useState<InventoryGroup[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // --- Auth Check on Mount ---
   useEffect(() => {
@@ -142,6 +144,58 @@ export default function App() {
     }
   };
 
+  const handleCloudUpload = async () => {
+    if (!user) return;
+    setIsSyncing(true);
+    const data = {
+        inventory,
+        trips,
+        folders,
+        groups
+    };
+    
+    try {
+        const result = await cloudSync.upload(user.id, data);
+        if (result.success) {
+            alert('✅ 雲端備份成功！\n您現在可以在其他裝置下載此資料。');
+        } else {
+            alert('❌ 上傳失敗：' + JSON.stringify(result.error));
+        }
+    } catch (e) {
+        console.error(e);
+        alert('❌ 上傳發生錯誤，請檢查網路連線。');
+    } finally {
+        setIsSyncing(false);
+    }
+  };
+
+  const handleCloudDownload = async () => {
+    if (!user) return;
+    if (!window.confirm("⚠️ 警告：這將會用雲端的資料「覆蓋」您目前電腦上的所有資料。\n\n確定要繼續嗎？")) return;
+
+    setIsSyncing(true);
+    try {
+        const result = await cloudSync.download(user.id);
+        if (result.success && result.data) {
+            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups } = result.data;
+            
+            if(newInv) setInventory(newInv);
+            if(newTrips) setTrips(newTrips);
+            if(newFolders) setFolders(newFolders);
+            if(newGroups) setGroups(newGroups);
+            
+            alert('✅ 資料同步完成！');
+        } else {
+            alert('❌ 下載失敗，或是雲端找不到此帳號的備份資料。');
+        }
+    } catch (e) {
+        console.error(e);
+        alert('❌ 下載發生錯誤，請檢查網路連線。');
+    } finally {
+        setIsSyncing(false);
+    }
+  };
+
   // --- Render ---
 
   if (!user) {
@@ -184,6 +238,32 @@ export default function App() {
                 <div className="h-6 w-px bg-slate-200 mx-1"></div>
 
                 <div className="flex items-center gap-2">
+                  {isSyncing ? (
+                    <div className="flex items-center gap-1 text-slate-400 px-2">
+                        <Loader2 size={18} className="animate-spin" />
+                        <span className="text-xs hidden md:inline">同步中...</span>
+                    </div>
+                  ) : (
+                    <>
+                        <button 
+                            onClick={handleCloudUpload}
+                            className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="上傳至雲端 (備份)"
+                        >
+                            <CloudUpload size={20} />
+                        </button>
+                        <button 
+                            onClick={handleCloudDownload}
+                            className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 rounded-lg transition-colors"
+                            title="從雲端下載 (還原)"
+                        >
+                            <CloudDownload size={20} />
+                        </button>
+                    </>
+                  )}
+
+                  <div className="h-4 w-px bg-slate-200 mx-1"></div>
+
                   <div className="hidden md:flex items-center gap-2 text-slate-600 text-sm font-medium px-2">
                     <UserIcon size={16} />
                     <span>{user.username}</span>
