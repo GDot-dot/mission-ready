@@ -25,6 +25,8 @@ export default function App() {
   useEffect(() => {
     const savedUserId = localStorage.getItem('mission_ready_active_user_id');
     const users = JSON.parse(localStorage.getItem('mission_ready_users') || '[]');
+    // 在使用雲端驗證的情況下，我們僅從 local storage 恢復基本的 session
+    // 完整的驗證邏輯在 Auth 組件中處理
     if (savedUserId && users.length > 0) {
       const activeUser = users.find((u: any) => u.id === savedUserId);
       if (activeUser) {
@@ -144,7 +146,7 @@ export default function App() {
     }
   };
 
-  const handleUploadCloud = async () => {
+  const handleCloudUpload = async () => {
     if (!user) return;
     setIsSyncing(true);
     const data = {
@@ -169,7 +171,7 @@ export default function App() {
     }
   };
 
-  const handleDownloadCloud = async () => {
+  const handleCloudDownload = async () => {
     if (!user) return;
     if (!window.confirm("⚠️ 警告：這將會用雲端的資料「覆蓋」您目前電腦上的所有資料。\n\n確定要繼續嗎？")) return;
 
@@ -246,7 +248,7 @@ export default function App() {
                   ) : (
                     <>
                         <button 
-                            onClick={handleUploadCloud}
+                            onClick={handleCloudUpload}
                             className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             title="上傳至雲端 (備份)"
                         >
