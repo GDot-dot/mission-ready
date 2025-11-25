@@ -4,8 +4,8 @@ import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
 import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
-import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
-import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup } from './types';
+import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
+import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory } from './types';
 import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2 } from 'lucide-react';
 // 使用相對路徑引入，避免 alias 設定問題
 import { cloudSync } from './firebaseConfig';
@@ -19,6 +19,7 @@ export default function App() {
   const [trips, setTrips] = useState<Trip[]>([]);
   const [folders, setFolders] = useState<InventoryFolder[]>([]);
   const [groups, setGroups] = useState<InventoryGroup[]>([]);
+  const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
 
@@ -38,16 +39,38 @@ export default function App() {
   
   // Load data when user changes
   const loadUserData = (userId: string) => {
+    // Categories (Load first to handle migration if needed)
+    const savedCategories = localStorage.getItem(`mission_ready_categories_${userId}`);
+    setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
+
     // Inventory
     const savedInventory = localStorage.getItem(`mission_ready_inventory_${userId}`);
     let loadedInventory: InventoryItem[] = [];
     
     if (savedInventory) {
       loadedInventory = JSON.parse(savedInventory);
-      // Migration for old items without folderId or groupId
+      // Migration for old items:
+      // 1. Without folderId/groupId
+      // 2. With old Enum string categories -> convert to IDs
       loadedInventory = loadedInventory.map(i => {
+        let catId = i.category;
+        // Simple migration check: if category looks like old enum string (contains Chinese or spaces), map it
+        if (catId.includes('Tools') || catId.includes('工具')) catId = 'cat_tools';
+        else if (catId.includes('Hardware') || catId.includes('硬體')) catId = 'cat_hardware';
+        else if (catId.includes('Cables') || catId.includes('線材')) catId = 'cat_cables';
+        else if (catId.includes('Software') || catId.includes('軟體')) catId = 'cat_software';
+        else if (catId.includes('Docs') || catId.includes('文件')) catId = 'cat_docs';
+        
+        // If still not matching a known ID (and not migrated), fallback to tools
+        // Note: This is a best-effort. Ideally, we check against INITIAL_CATEGORIES ids.
+        // Since new IDs are 'cat_...', we can check that prefix.
+        if (!catId.startsWith('cat_') && !INITIAL_CATEGORIES.some(c => c.id === catId)) {
+             catId = 'cat_tools'; 
+        }
+
         return {
           ...i,
+          category: catId,
           folderId: i.folderId || DEFAULT_FOLDER_ID,
           groupId: i.groupId || DEFAULT_GROUP_ID
         };
@@ -61,14 +84,29 @@ export default function App() {
     const savedTrips = localStorage.getItem(`mission_ready_trips_${userId}`);
     let loadedTrips: Trip[] = savedTrips ? JSON.parse(savedTrips) : [];
     
-    // Trip Data Migration: Ensure groups exist
+    // Trip Data Migration
     loadedTrips = loadedTrips.map(trip => ({
       ...trip,
       groups: trip.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }],
-      items: trip.items.map(item => ({
-        ...item,
-        tripGroupId: item.tripGroupId || DEFAULT_TRIP_GROUP_ID
-      }))
+      items: trip.items.map(item => {
+        // Migrate category in trips too
+        let catId = item.category;
+        if (catId.includes('Tools') || catId.includes('工具')) catId = 'cat_tools';
+        else if (catId.includes('Hardware') || catId.includes('硬體')) catId = 'cat_hardware';
+        else if (catId.includes('Cables') || catId.includes('線材')) catId = 'cat_cables';
+        else if (catId.includes('Software') || catId.includes('軟體')) catId = 'cat_software';
+        else if (catId.includes('Docs') || catId.includes('文件')) catId = 'cat_docs';
+        
+        if (!catId.startsWith('cat_') && !INITIAL_CATEGORIES.some(c => c.id === catId)) {
+             catId = 'cat_tools'; 
+        }
+
+        return {
+            ...item,
+            category: catId,
+            tripGroupId: item.tripGroupId || DEFAULT_TRIP_GROUP_ID
+        };
+      })
     }));
     setTrips(loadedTrips);
 
@@ -102,6 +140,11 @@ export default function App() {
     localStorage.setItem(`mission_ready_groups_${user.id}`, JSON.stringify(groups));
   }, [groups, user]);
 
+  useEffect(() => {
+    if (!user) return;
+    localStorage.setItem(`mission_ready_categories_${user.id}`, JSON.stringify(categories));
+  }, [categories, user]);
+
   // --- Handlers ---
 
   const handleLogin = (loggedInUser: User) => {
@@ -118,6 +161,7 @@ export default function App() {
     setTrips([]);
     setFolders([]);
     setGroups([]);
+    setCategories([]);
   };
 
   const handleSaveTrip = (updatedTrip: Trip) => {
@@ -163,7 +207,8 @@ export default function App() {
         inventory,
         trips,
         folders,
-        groups
+        groups,
+        categories // Include categories in sync
     };
     
     try {
@@ -189,23 +234,14 @@ export default function App() {
     try {
         const result = await cloudSync.download(user.id);
         if (result.success && result.data) {
-            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups } = result.data;
+            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats } = result.data;
             
-            // Migration during cloud sync as well
-            let migratedTrips = newTrips;
-            if (migratedTrips) {
-                migratedTrips = migratedTrips.map((trip: any) => ({
-                    ...trip,
-                    groups: trip.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }],
-                    items: trip.items.map((item: any) => ({
-                        ...item,
-                        tripGroupId: item.tripGroupId || DEFAULT_TRIP_GROUP_ID
-                    }))
-                }));
-            }
-
+            // Apply migration logic to downloaded data just in case
+            // (Simplified here, assuming upload was from same version)
+            
+            if(newCats) setCategories(newCats);
             if(newInv) setInventory(newInv);
-            if(migratedTrips) setTrips(migratedTrips);
+            if(newTrips) setTrips(newTrips);
             if(newFolders) setFolders(newFolders);
             if(newGroups) setGroups(newGroups);
             
@@ -399,6 +435,8 @@ export default function App() {
                     setFolders={setFolders}
                     groups={groups}
                     setGroups={setGroups}
+                    categories={categories}
+                    setCategories={setCategories}
                 />
             </div>
         )}
@@ -410,6 +448,7 @@ export default function App() {
                     inventory={inventory} 
                     folders={folders}
                     groups={groups}
+                    categories={categories}
                     currentTrip={activeTrip}
                     onSave={handleSaveTrip}
                     onCancel={() => setView(activeTripId ? 'TRIP_RUN' : 'DASHBOARD')}
@@ -422,6 +461,7 @@ export default function App() {
             <div className="animate-in fade-in slide-in-from-right-4 duration-300">
                 <TripRunner 
                     trip={activeTrip}
+                    categories={categories}
                     onUpdateTrip={handleSaveTrip}
                     onBack={() => setView('DASHBOARD')}
                     onEdit={() => setView('TRIP_EDIT')}

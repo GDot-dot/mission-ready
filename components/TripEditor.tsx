@@ -1,19 +1,20 @@
 
 import React, { useState } from 'react';
-import { InventoryItem, Trip, TripItem, Category, InventoryFolder, InventoryGroup, TripGroup } from '../types';
-import { CATEGORY_COLORS, DEFAULT_TRIP_GROUP_ID } from '../constants';
-import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, Filter, LayoutGrid, X, Edit2 } from 'lucide-react';
+import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory } from '../types';
+import { DEFAULT_TRIP_GROUP_ID } from '../constants';
+import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X } from 'lucide-react';
 
 interface TripEditorProps {
   inventory: InventoryItem[];
   folders: InventoryFolder[];
   groups: InventoryGroup[];
+  categories: InventoryCategory[];
   currentTrip: Trip | null;
   onSave: (trip: Trip) => void;
   onCancel: () => void;
 }
 
-export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, currentTrip, onSave, onCancel }) => {
+export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, categories, currentTrip, onSave, onCancel }) => {
   const [tripName, setTripName] = useState(currentTrip?.name || `出差行程 ${new Date().toLocaleDateString()}`);
   const [tripDate, setTripDate] = useState(currentTrip?.date || new Date().toISOString().split('T')[0]);
   const [tripItems, setTripItems] = useState<TripItem[]>(currentTrip?.items || []);
@@ -115,6 +116,14 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   // Filter items for the current view (right side)
   const activeTripItems = tripItems.filter(item => item.tripGroupId === activeTripGroupId);
 
+  const getCategoryInfo = (catId: string) => {
+      const cat = categories.find(c => c.id === catId);
+      return {
+          name: cat?.name || '未知',
+          color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200'
+      };
+  };
+
   return (
     <div className="h-[calc(100vh-100px)] flex flex-col gap-4">
       {/* Header */}
@@ -211,35 +220,38 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
               >
                 全部
               </button>
-              {Object.values(Category).map(cat => (
+              {categories.map(cat => (
                 <button 
-                  key={cat}
-                  onClick={() => setFilterCategory(cat)}
-                  className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat ? 'bg-slate-800 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
+                  key={cat.id}
+                  onClick={() => setFilterCategory(cat.id)}
+                  className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat.id ? 'bg-slate-800 text-white' : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'}`}
                 >
-                  {cat.split(' ')[0]}
+                  {cat.name}
                 </button>
               ))}
             </div>
           </div>
           
           <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-3 content-start">
-            {filteredInventory.map(item => (
-              <button
-                key={item.id}
-                onClick={() => handleAddItem(item)}
-                className="group flex flex-col items-start p-3 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-all text-left bg-white shadow-sm"
-              >
-                <div className="flex justify-between w-full mb-1">
-                  <span className={`text-[10px] px-1.5 py-0.5 rounded border ${CATEGORY_COLORS[item.category]}`}>
-                    {item.category.split(' ')[0]}
-                  </span>
-                  <Plus size={16} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
-                </div>
-                <span className="font-medium text-slate-800 text-sm">{item.name}</span>
-                {item.defaultVersion && <span className="text-xs text-slate-400 mt-1">預設: {item.defaultVersion}</span>}
-              </button>
-            ))}
+            {filteredInventory.map(item => {
+                const info = getCategoryInfo(item.category);
+                return (
+                <button
+                    key={item.id}
+                    onClick={() => handleAddItem(item)}
+                    className="group flex flex-col items-start p-3 rounded-lg border border-slate-100 hover:border-blue-300 hover:bg-blue-50 transition-all text-left bg-white shadow-sm"
+                >
+                    <div className="flex justify-between w-full mb-1">
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded border ${info.color}`}>
+                        {info.name}
+                    </span>
+                    <Plus size={16} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                    </div>
+                    <span className="font-medium text-slate-800 text-sm">{item.name}</span>
+                    {item.defaultVersion && <span className="text-xs text-slate-400 mt-1">預設: {item.defaultVersion}</span>}
+                </button>
+                )
+            })}
             {filteredInventory.length === 0 && (
               <div className="col-span-full text-center text-slate-400 text-sm py-8">
                 找不到物品，請檢查搜尋條件
@@ -309,12 +321,14 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
                 <p>此分組是空的，請從左側加入物品</p>
               </div>
             ) : (
-              activeTripItems.map((item) => (
+              activeTripItems.map((item) => {
+                const info = getCategoryInfo(item.category);
+                return (
                 <div key={item.id} className="flex gap-3 items-start bg-white p-3 rounded-lg border border-slate-200 shadow-sm animate-in fade-in slide-in-from-left-2 duration-300">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${CATEGORY_COLORS[item.category]} whitespace-nowrap`}>
-                        {item.category.split(' ')[0]}
+                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${info.color} whitespace-nowrap`}>
+                        {info.name}
                       </span>
                       <span className="font-bold text-slate-800 truncate">{item.name}</span>
                     </div>
@@ -350,7 +364,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
                     </button>
                   </div>
                 </div>
-              ))
+              )})
             )}
           </div>
         </div>

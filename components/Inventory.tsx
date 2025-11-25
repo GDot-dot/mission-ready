@@ -1,8 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
-import { InventoryItem, InventoryFolder, InventoryGroup, Category } from '../types';
-import { CATEGORY_COLORS, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from '../constants';
-import { Plus, Trash2, Search, X, Folder, FolderPlus, Layers, LayoutGrid } from 'lucide-react';
+import { InventoryItem, InventoryFolder, InventoryGroup, InventoryCategory } from '../types';
+import { CATEGORY_PALETTE, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from '../constants';
+import { Plus, Trash2, Search, X, Folder, FolderPlus, LayoutGrid, Tag, Edit2, Palette } from 'lucide-react';
 
 interface InventoryProps {
   items: InventoryItem[];
@@ -11,9 +11,11 @@ interface InventoryProps {
   setFolders: React.Dispatch<React.SetStateAction<InventoryFolder[]>>;
   groups: InventoryGroup[];
   setGroups: React.Dispatch<React.SetStateAction<InventoryGroup[]>>;
+  categories: InventoryCategory[];
+  setCategories: React.Dispatch<React.SetStateAction<InventoryCategory[]>>;
 }
 
-export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, setFolders, groups, setGroups }) => {
+export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, setFolders, groups, setGroups, categories, setCategories }) => {
   const [activeFolderId, setActiveFolderId] = useState<string>(folders[0]?.id || DEFAULT_FOLDER_ID);
   const [activeGroupId, setActiveGroupId] = useState<string>('ALL');
   
@@ -23,7 +25,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   // New Item State
   const [isAdding, setIsAdding] = useState(false);
   const [newItemName, setNewItemName] = useState('');
-  const [newItemCategory, setNewItemCategory] = useState<Category>(Category.Tools);
+  const [newItemCategory, setNewItemCategory] = useState<string>(categories[0]?.id || '');
   const [newItemDefault, setNewItemDefault] = useState('');
 
   // New Folder State
@@ -34,10 +36,24 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   const [isAddingGroup, setIsAddingGroup] = useState(false);
   const [newGroupName, setNewGroupName] = useState('');
 
+  // Category Manager State
+  const [isManagingCategories, setIsManagingCategories] = useState(false);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null);
+  const [categoryFormName, setCategoryFormName] = useState('');
+  const [categoryFormColor, setCategoryFormColor] = useState(CATEGORY_PALETTE[0].class);
+
   // When active folder changes, reset group selection to ALL
   useEffect(() => {
     setActiveGroupId('ALL');
   }, [activeFolderId]);
+
+  // Update default new item category if categories change
+  useEffect(() => {
+    if (!newItemCategory && categories.length > 0) {
+        setNewItemCategory(categories[0].id);
+    }
+  }, [categories, newItemCategory]);
 
   const activeFolderName = folders.find(f => f.id === activeFolderId)?.name || '未知資料夾';
   
@@ -60,7 +76,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
       folderId: activeFolderId,
       groupId: activeGroupId === 'ALL' ? defaultGroupForFolder : activeGroupId, // If ALL, put in default/first group
       name: newItemName,
-      category: newItemCategory,
+      category: newItemCategory, // Stores ID
       defaultVersion: newItemDefault
     };
     setItems(prev => [...prev, newItem]);
@@ -132,6 +148,32 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
     }
   };
 
+  // --- Category Management ---
+  const handleAddCategory = () => {
+    if (!categoryFormName.trim()) return;
+    const newCat: InventoryCategory = {
+        id: Math.random().toString(36).substring(2, 9),
+        name: categoryFormName,
+        color: categoryFormColor
+    };
+    setCategories(prev => [...prev, newCat]);
+    setCategoryFormName('');
+    setIsAddingCategory(false);
+  };
+
+  const handleUpdateCategory = () => {
+    if (!categoryFormName.trim() || !editingCategoryId) return;
+    setCategories(prev => prev.map(c => c.id === editingCategoryId ? { ...c, name: categoryFormName, color: categoryFormColor } : c));
+    setEditingCategoryId(null);
+    setCategoryFormName('');
+  };
+
+  const handleDeleteCategory = (id: string) => {
+    if (window.confirm("刪除此分類後，原本屬於此分類的物品將會顯示為未知。確定嗎？")) {
+        setCategories(prev => prev.filter(c => c.id !== id));
+    }
+  };
+
   const filteredItems = items.filter(item => {
     // Only show items in current folder
     if (item.folderId !== activeFolderId) return false;
@@ -147,6 +189,116 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   return (
     <div className="flex flex-col lg:flex-row gap-6 min-h-[600px]">
       
+      {/* Category Management Modal */}
+      {isManagingCategories && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+            <div className="bg-white rounded-xl w-full max-w-lg shadow-2xl max-h-[80vh] flex flex-col">
+                <div className="p-4 border-b flex justify-between items-center">
+                    <h3 className="font-bold text-lg flex items-center gap-2">
+                        <Tag size={20} /> 分類管理
+                    </h3>
+                    <button onClick={() => setIsManagingCategories(false)} className="p-1 hover:bg-slate-100 rounded-full">
+                        <X size={20} />
+                    </button>
+                </div>
+                
+                <div className="p-4 overflow-y-auto flex-1 space-y-4">
+                    {/* Add/Edit Form */}
+                    {(isAddingCategory || editingCategoryId) && (
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 space-y-3">
+                            <h4 className="text-sm font-bold text-slate-500">{editingCategoryId ? '編輯分類' : '新增分類'}</h4>
+                            <div className="flex gap-2">
+                                <input 
+                                    autoFocus
+                                    className="flex-1 border border-slate-300 rounded px-2 py-1 text-sm outline-none focus:border-blue-500"
+                                    placeholder="分類名稱"
+                                    value={categoryFormName}
+                                    onChange={e => setCategoryFormName(e.target.value)}
+                                />
+                            </div>
+                            <div>
+                                <label className="text-xs text-slate-400 block mb-1">選擇顏色</label>
+                                <div className="flex flex-wrap gap-2">
+                                    {CATEGORY_PALETTE.map((color, idx) => (
+                                        <button
+                                            key={idx}
+                                            onClick={() => setCategoryFormColor(color.class)}
+                                            className={`w-6 h-6 rounded-full border ${color.class.replace('bg-', 'bg-').replace('text-', 'text-').split(' ')[0]} ${categoryFormColor === color.class ? 'ring-2 ring-offset-1 ring-slate-400' : ''}`}
+                                            title={color.name}
+                                        />
+                                    ))}
+                                </div>
+                                <div className={`mt-2 text-xs px-2 py-1 rounded border w-fit ${categoryFormColor}`}>預覽樣式</div>
+                            </div>
+                            <div className="flex gap-2 pt-2">
+                                <button 
+                                    onClick={editingCategoryId ? handleUpdateCategory : handleAddCategory} 
+                                    className="flex-1 bg-blue-600 text-white py-1 rounded text-sm hover:bg-blue-700"
+                                >
+                                    {editingCategoryId ? '更新' : '建立'}
+                                </button>
+                                <button 
+                                    onClick={() => {
+                                        setIsAddingCategory(false);
+                                        setEditingCategoryId(null);
+                                        setCategoryFormName('');
+                                    }} 
+                                    className="flex-1 bg-white border border-slate-300 text-slate-600 py-1 rounded text-sm hover:bg-slate-50"
+                                >
+                                    取消
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* List */}
+                    {!isAddingCategory && !editingCategoryId && (
+                        <button 
+                            onClick={() => {
+                                setIsAddingCategory(true);
+                                setCategoryFormName('');
+                                setCategoryFormColor(CATEGORY_PALETTE[0].class);
+                            }}
+                            className="w-full py-2 border-2 border-dashed border-slate-200 rounded-lg text-slate-400 text-sm hover:border-blue-300 hover:text-blue-500 hover:bg-blue-50 flex items-center justify-center gap-1"
+                        >
+                            <Plus size={16} /> 新增分類
+                        </button>
+                    )}
+
+                    <div className="space-y-2">
+                        {categories.map(cat => (
+                            <div key={cat.id} className="flex items-center justify-between p-3 bg-white border border-slate-100 rounded-lg shadow-sm group">
+                                <div className="flex items-center gap-3">
+                                    <span className={`w-4 h-4 rounded-full ${cat.color.split(' ')[0].replace('text-', 'bg-').replace('border-', '')} border opacity-50`}></span>
+                                    <span className={`text-sm px-2 py-0.5 rounded border ${cat.color}`}>{cat.name}</span>
+                                </div>
+                                <div className="flex gap-1">
+                                    <button 
+                                        onClick={() => {
+                                            setEditingCategoryId(cat.id);
+                                            setCategoryFormName(cat.name);
+                                            setCategoryFormColor(cat.color);
+                                            setIsAddingCategory(false);
+                                        }}
+                                        className="p-1 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded"
+                                    >
+                                        <Edit2 size={16} />
+                                    </button>
+                                    <button 
+                                        onClick={() => handleDeleteCategory(cat.id)}
+                                        className="p-1 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded"
+                                    >
+                                        <Trash2 size={16} />
+                                    </button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            </div>
+        </div>
+      )}
+
       {/* Sidebar - Folders */}
       <div className="w-full lg:w-64 flex-shrink-0 space-y-4">
         <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
@@ -310,11 +462,11 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                 <label className="block text-sm font-medium text-blue-900 mb-1">技術分類</label>
                 <select
                   value={newItemCategory}
-                  onChange={(e) => setNewItemCategory(e.target.value as Category)}
+                  onChange={(e) => setNewItemCategory(e.target.value)}
                   className="w-full bg-white border border-blue-200 rounded-lg px-3 py-2 text-slate-900 focus:ring-2 focus:ring-blue-500 outline-none"
                 >
-                  {Object.values(Category).map(cat => (
-                    <option key={cat} value={cat}>{cat.split(' ')[0]}</option>
+                  {categories.map(cat => (
+                    <option key={cat.id} value={cat.id}>{cat.name}</option>
                   ))}
                 </select>
               </div>
@@ -341,8 +493,8 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
         )}
 
         {/* Filters */}
-        <div className="flex flex-col md:flex-row gap-4">
-          <div className="relative flex-1">
+        <div className="flex flex-col md:flex-row gap-4 items-center">
+          <div className="relative flex-1 w-full">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
             <input
               type="text"
@@ -352,28 +504,41 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
               className="w-full pl-10 pr-4 py-2 bg-white border border-slate-200 rounded-lg text-slate-900 focus:ring-2 focus:ring-slate-400 outline-none shadow-sm"
             />
           </div>
-          <select
-            value={filterCategory}
-            onChange={(e) => setFilterCategory(e.target.value)}
-            className="bg-white border border-slate-200 rounded-lg px-4 py-2 text-slate-900 focus:ring-2 focus:ring-slate-400 outline-none shadow-sm cursor-pointer"
-          >
-            <option value="ALL">所有技術分類</option>
-            {Object.values(Category).map(cat => (
-              <option key={cat} value={cat}>{cat}</option>
-            ))}
-          </select>
+          <div className="flex gap-2 w-full md:w-auto">
+            <select
+                value={filterCategory}
+                onChange={(e) => setFilterCategory(e.target.value)}
+                className="bg-white border border-slate-200 rounded-lg px-4 py-2 text-slate-900 focus:ring-2 focus:ring-slate-400 outline-none shadow-sm cursor-pointer flex-1 md:flex-none"
+            >
+                <option value="ALL">所有技術分類</option>
+                {categories.map(cat => (
+                <option key={cat.id} value={cat.id}>{cat.name}</option>
+                ))}
+            </select>
+            <button 
+                onClick={() => setIsManagingCategories(true)}
+                className="px-3 py-2 bg-white border border-slate-200 rounded-lg text-slate-600 hover:bg-slate-50 hover:text-blue-600 transition-colors shadow-sm flex items-center gap-2 whitespace-nowrap"
+                title="管理分類"
+            >
+                <Tag size={18} />
+            </button>
+          </div>
         </div>
 
         {/* List */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {filteredItems.map(item => {
              const itemGroupName = folderGroups.find(g => g.id === item.groupId)?.name || '未知';
+             const category = categories.find(c => c.id === item.category);
+             const categoryColor = category?.color || 'bg-gray-100 text-gray-600 border-gray-200';
+             const categoryName = category?.name || '未知分類';
+
              return (
               <div key={item.id} className="group bg-white p-4 rounded-xl border border-slate-200 shadow-sm hover:shadow-md transition-all">
                 <div className="flex justify-between items-start mb-2">
                   <div className="flex gap-2">
-                      <span className={`text-xs px-2 py-1 rounded-full border ${CATEGORY_COLORS[item.category]}`}>
-                        {item.category.split(' ')[0]}
+                      <span className={`text-xs px-2 py-1 rounded-full border ${categoryColor}`}>
+                        {categoryName}
                       </span>
                       <span className="text-xs px-2 py-1 rounded-full border border-slate-100 bg-slate-50 text-slate-500">
                         {itemGroupName}

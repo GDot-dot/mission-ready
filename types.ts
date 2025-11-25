@@ -1,10 +1,8 @@
 
-export enum Category {
-  Tools = "燒錄/工具 (Tools)",
-  Hardware = "硬體/PCBA (Hardware)",
-  Cables = "線材/電源 (Cables/Power)",
-  Software = "軟體/韌體 (Software)",
-  Docs = "文件/雜項 (Docs/Misc)"
+export interface InventoryCategory {
+  id: string;
+  name: string;
+  color: string; // Tailwind classes string
 }
 
 export interface User {
@@ -31,7 +29,7 @@ export interface InventoryItem {
   folderId: string; // Links item to a folder
   groupId: string;  // Links item to a user-defined group
   name: string;
-  category: Category;
+  category: string; // Now stores the Category ID string
   defaultVersion?: string; // Pre-fill value for version/note
 }
 
@@ -45,7 +43,7 @@ export interface TripItem {
   inventoryId: string;
   tripGroupId: string; // Belongs to a specific group within the trip (e.g., "Bag 1")
   name: string;
-  category: Category;
+  category: string; // Stores Category ID
   qty: number;
   version: string; // User editable version/note
   checked: boolean;
