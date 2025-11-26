@@ -1,8 +1,10 @@
-
 import React, { useState } from 'react';
 import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory } from '../types';
 import { DEFAULT_TRIP_GROUP_ID } from '../constants';
-import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X } from 'lucide-react';
+import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X, GripVertical } from 'lucide-react';
+import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
+import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface TripEditorProps {
   inventory: InventoryItem[];
@@ -13,6 +15,67 @@ interface TripEditorProps {
   onSave: (trip: Trip) => void;
   onCancel: () => void;
 }
+
+// --- Sortable Item Component ---
+const SortableTripItem = ({ item, info, updateItem, handleRemoveItem }: { item: TripItem, info: any, updateItem: any, handleRemoveItem: any }) => {
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
+  
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 'auto',
+    opacity: isDragging ? 0.5 : 1,
+    touchAction: 'none', // Prevents browser scrolling while dragging
+  };
+
+  return (
+    <div ref={setNodeRef} style={style} className="flex gap-3 items-start bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+      {/* Drag Handle - 專屬拖曳區塊 */}
+      <div {...attributes} {...listeners} className="mt-1 text-slate-300 cursor-grab active:cursor-grabbing hover:text-slate-500 p-1">
+        <GripVertical size={20} />
+      </div>
+
+      <div className="flex-1 min-w-0">
+        <div className="flex items-center gap-2 mb-2">
+          <span className={`text-[10px] px-1.5 py-0.5 rounded border ${info.color} whitespace-nowrap`}>
+            {info.name}
+          </span>
+          <span className="font-bold text-slate-800 truncate">{item.name}</span>
+        </div>
+        <div className="flex gap-2">
+          <div className="flex-1">
+            <textarea
+              value={item.version}
+              onChange={(e) => updateItem(item.id, 'version', e.target.value)}
+              placeholder="輸入備註 (可換行)..."
+              rows={2}
+              className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
+            />
+          </div>
+        </div>
+      </div>
+      
+      <div className="flex flex-col items-end gap-2">
+        <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
+            <input
+            type="number"
+            min="1"
+            value={item.qty}
+            onChange={(e) => updateItem(item.id, 'qty', parseInt(e.target.value) || 1)}
+            className="w-12 text-center bg-white border-x border-slate-200 py-1 text-slate-900 font-bold outline-none"
+          />
+          <span className="text-xs text-slate-400 px-1">Qty</span>
+        </div>
+        <button 
+          onClick={() => handleRemoveItem(item.id)}
+          className="text-slate-300 hover:text-red-500 p-1"
+        >
+          <Trash2 size={16} />
+        </button>
+      </div>
+    </div>
+  );
+};
 
 export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, categories, currentTrip, onSave, onCancel }) => {
   const [tripName, setTripName] = useState(currentTrip?.name || `出差行程 ${new Date().toLocaleDateString()}`);
@@ -30,11 +93,30 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const [filterFolder, setFilterFolder] = useState<string>('ALL');
   const [filterGroup, setFilterGroup] = useState<string>('ALL');
 
+  // DnD Sensors (Mouse & Touch)
+  const sensors = useSensors(
+    useSensor(PointerSensor, { 
+        activationConstraint: { distance: 8 } // 必須移動 8px 才算拖曳，避免太靈敏
+    }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (active.id !== over?.id) {
+      setTripItems((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over?.id);
+        return arrayMove(items, oldIndex, newIndex);
+      });
+    }
+  };
+
   const handleAddItem = (invItem: InventoryItem) => {
     const newItem: TripItem = {
       id: Math.random().toString(36).substring(2, 9),
       inventoryId: invItem.id,
-      tripGroupId: activeTripGroupId, // Add to currently selected group
+      tripGroupId: activeTripGroupId,
       name: invItem.name,
       category: invItem.category,
       qty: 1,
@@ -90,7 +172,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
 
     const updatedTrip: Trip = {
       id: currentTrip?.id || Math.random().toString(36).substring(2, 9),
-      userId: currentTrip?.userId || 'unknown', // Handled by App.tsx
+      userId: currentTrip?.userId || 'unknown',
       name: tripName,
       date: tripDate,
       status: currentTrip?.status || 'planning',
@@ -108,12 +190,11 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
     return matchesSearch && matchesCategory && matchesFolder && matchesGroup;
   });
 
-  // Get available groups based on selected folder
   const availableGroups = filterFolder === 'ALL' 
     ? groups 
     : groups.filter(g => g.folderId === filterFolder);
 
-  // Filter items for the current view (right side)
+  // Filter items for the current view (right side) and preserve their order from main array
   const activeTripItems = tripItems.filter(item => item.tripGroupId === activeTripGroupId);
 
   const getCategoryInfo = (catId: string) => {
@@ -321,50 +402,26 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
                 <p>此分組是空的，請從左側加入物品</p>
               </div>
             ) : (
-              activeTripItems.map((item) => {
-                const info = getCategoryInfo(item.category);
-                return (
-                <div key={item.id} className="flex gap-3 items-start bg-white p-3 rounded-lg border border-slate-200 shadow-sm animate-in fade-in slide-in-from-left-2 duration-300">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded border ${info.color} whitespace-nowrap`}>
-                        {info.name}
-                      </span>
-                      <span className="font-bold text-slate-800 truncate">{item.name}</span>
-                    </div>
-                    <div className="flex gap-2">
-                      <div className="flex-1">
-                        <textarea
-                          value={item.version}
-                          onChange={(e) => updateItem(item.id, 'version', e.target.value)}
-                          placeholder="輸入備註 (可換行)..."
-                          rows={2}
-                          className="w-full bg-slate-50 border border-slate-200 rounded px-2 py-1 text-sm text-slate-900 focus:ring-1 focus:ring-blue-500 outline-none resize-none"
-                        />
-                      </div>
-                    </div>
-                  </div>
-                  
-                  <div className="flex flex-col items-end gap-2">
-                    <div className="flex items-center border border-slate-200 rounded-lg overflow-hidden bg-slate-50">
-                       <input
-                        type="number"
-                        min="1"
-                        value={item.qty}
-                        onChange={(e) => updateItem(item.id, 'qty', parseInt(e.target.value) || 1)}
-                        className="w-12 text-center bg-white border-x border-slate-200 py-1 text-slate-900 font-bold outline-none"
-                      />
-                      <span className="text-xs text-slate-400 px-1">Qty</span>
-                    </div>
-                    <button 
-                      onClick={() => handleRemoveItem(item.id)}
-                      className="text-slate-300 hover:text-red-500 p-1"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-                </div>
-              )})
+              <DndContext 
+                sensors={sensors}
+                collisionDetection={closestCenter}
+                onDragEnd={handleDragEnd}
+              >
+                <SortableContext 
+                  items={activeTripItems.map(i => i.id)}
+                  strategy={verticalListSortingStrategy}
+                >
+                  {activeTripItems.map((item) => (
+                    <SortableTripItem 
+                      key={item.id} 
+                      item={item} 
+                      info={getCategoryInfo(item.category)}
+                      updateItem={updateItem}
+                      handleRemoveItem={handleRemoveItem}
+                    />
+                  ))}
+                </SortableContext>
+              </DndContext>
             )}
           </div>
         </div>
