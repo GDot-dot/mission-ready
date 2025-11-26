@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 import { Trip, TripItem, InventoryCategory } from '../types';
-import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X } from 'lucide-react';
 
 interface TripRunnerProps {
   trip: Trip;
@@ -11,8 +10,20 @@ interface TripRunnerProps {
   onEdit: () => void;
 }
 
+interface SummaryItem {
+    name: string;
+    totalQty: number;
+    details: { version: string, qty: number }[];
+}
+
+interface SummaryCategory {
+    categoryId: string;
+    items: SummaryItem[];
+}
+
 export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpdateTrip, onBack, onEdit }) => {
   const [localTrip, setLocalTrip] = useState<Trip>(trip);
+  const [showSummary, setShowSummary] = useState(false);
 
   // Sync prop changes
   useEffect(() => {
@@ -43,8 +54,108 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
       };
   };
 
+  // Generate Summary Report Logic
+  const generateSummary = () => {
+      const summary: SummaryCategory[] = [];
+      
+      // Group all items by Category first
+      const itemsByCategory: Record<string, TripItem[]> = {};
+      localTrip.items.forEach(item => {
+          if(!itemsByCategory[item.category]) itemsByCategory[item.category] = [];
+          itemsByCategory[item.category].push(item);
+      });
+
+      // For each category, group by Item Name
+      Object.keys(itemsByCategory).forEach(catId => {
+          const items = itemsByCategory[catId];
+          const itemsByName: Record<string, TripItem[]> = {};
+          
+          items.forEach(item => {
+              if(!itemsByName[item.name]) itemsByName[item.name] = [];
+              itemsByName[item.name].push(item);
+          });
+
+          const summaryItems: SummaryItem[] = Object.keys(itemsByName).map(name => {
+              const variants = itemsByName[name];
+              const totalQty = variants.reduce((sum, i) => sum + i.qty, 0);
+              
+              // Group by version/note to show details
+              const detailsMap: Record<string, number> = {};
+              variants.forEach(v => {
+                  const key = v.version || '(無備註)';
+                  detailsMap[key] = (detailsMap[key] || 0) + v.qty;
+              });
+
+              const details = Object.keys(detailsMap).map(ver => ({
+                  version: ver,
+                  qty: detailsMap[ver]
+              }));
+
+              return { name, totalQty, details };
+          });
+
+          summary.push({ categoryId: catId, items: summaryItems });
+      });
+
+      return summary;
+  };
+
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
+      {/* Summary Modal */}
+      {showSummary && (
+          <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+              <div className="bg-white rounded-xl w-full max-w-2xl shadow-2xl max-h-[85vh] flex flex-col">
+                  <div className="p-4 border-b flex justify-between items-center bg-slate-50 rounded-t-xl">
+                      <h3 className="font-bold text-xl flex items-center gap-2 text-slate-800">
+                          <PieChart className="text-blue-600" /> 行程統計總表
+                      </h3>
+                      <button onClick={() => setShowSummary(false)} className="p-1 hover:bg-slate-200 rounded-full transition-colors">
+                          <X size={24} className="text-slate-500" />
+                      </button>
+                  </div>
+                  <div className="p-6 overflow-y-auto flex-1 space-y-6">
+                      {generateSummary().map(catGroup => {
+                          const catInfo = getCategoryInfo(catGroup.categoryId);
+                          return (
+                              <div key={catGroup.categoryId} className="border border-slate-100 rounded-xl overflow-hidden shadow-sm">
+                                  <div className={`px-4 py-2 font-bold text-sm uppercase tracking-wider border-b ${catInfo.color.replace('text-', 'bg-opacity-10 bg-').split(' ')[0]} ${catInfo.color.split(' ')[1]}`}>
+                                      {catInfo.name}
+                                  </div>
+                                  <div className="divide-y divide-slate-50">
+                                      {catGroup.items.map((item, idx) => (
+                                          <div key={idx} className="p-4 bg-white flex flex-col sm:flex-row sm:justify-between gap-2">
+                                              <div className="flex items-baseline gap-2">
+                                                  <span className="font-bold text-slate-800 text-lg">{item.name}</span>
+                                                  <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full font-medium">總計: {item.totalQty}</span>
+                                              </div>
+                                              <div className="flex flex-col gap-1 sm:items-end">
+                                                  {item.details.map((detail, dIdx) => (
+                                                      <div key={dIdx} className="text-sm text-slate-600 flex items-center gap-2">
+                                                          <span className={`px-2 py-0.5 rounded text-xs border ${detail.version === '(無備註)' ? 'bg-slate-50 border-slate-200 text-slate-400' : 'bg-yellow-50 border-yellow-200 text-yellow-700'}`}>
+                                                              {detail.version}
+                                                          </span>
+                                                          <span className="font-mono">x{detail.qty}</span>
+                                                      </div>
+                                                  ))}
+                                              </div>
+                                          </div>
+                                      ))}
+                                  </div>
+                              </div>
+                          );
+                      })}
+                      {localTrip.items.length === 0 && <p className="text-center text-slate-400 py-8">目前沒有物品可供統計</p>}
+                  </div>
+                  <div className="p-4 border-t bg-slate-50 text-center rounded-b-xl">
+                      <button onClick={() => setShowSummary(false)} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-medium hover:bg-blue-700 transition-colors shadow-sm">
+                          關閉
+                      </button>
+                  </div>
+              </div>
+          </div>
+      )}
+
       {/* Header */}
       <div className="sticky top-0 z-10 bg-slate-50/95 backdrop-blur-sm pt-4 pb-2 border-b border-slate-200">
         <div className="flex items-center justify-between mb-4">
@@ -54,11 +165,20 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
           </button>
           <div className="flex items-center gap-2">
             <button 
+                onClick={() => setShowSummary(true)}
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white border border-slate-200 text-blue-600 hover:bg-blue-50 font-medium shadow-sm transition-all"
+                title="查看統計總表"
+            >
+                <PieChart size={16} />
+                <span className="hidden sm:inline">統計總表</span>
+            </button>
+            <div className="h-4 w-px bg-slate-300 mx-1"></div>
+            <button 
                 onClick={onEdit}
-                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-100"
+                className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white border border-slate-200 text-slate-600 hover:bg-slate-100 transition-all"
             >
                 <Edit3 size={16} />
-                編輯清單
+                編輯
             </button>
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${localTrip.status === 'completed' ? 'bg-green-500 text-white' : 'bg-blue-600 text-white'}`}>
                 {localTrip.status === 'completed' ? '已完成' : '進行中'}
@@ -144,7 +264,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
       
       {localTrip.items.length === 0 && (
          <div className="text-center py-20 text-slate-400">
-            <PieChart size={48} className="mx-auto mb-4 opacity-50" />
+            <Layers size={48} className="mx-auto mb-4 opacity-50" />
             <p>此行程沒有物品，請點擊編輯加入物品。</p>
          </div>
       )}
