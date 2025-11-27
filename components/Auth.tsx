@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { UserCheck, UserPlus, LogIn, Lock, Cloud } from 'lucide-react';
+import { UserCheck, LogIn, Lock, Cloud } from 'lucide-react';
 import { cloudAuth } from '../firebaseConfig';
 
 interface AuthProps {
@@ -69,31 +69,31 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-100 p-4">
-      <div className="bg-white p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200">
+    <div className="min-h-screen flex items-center justify-center bg-slate-100 dark:bg-slate-900 p-4 transition-colors duration-200">
+      <div className="bg-white dark:bg-slate-800 p-8 rounded-2xl shadow-xl w-full max-w-md border border-slate-200 dark:border-slate-700">
         <div className="text-center mb-8">
-          <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200">
+          <div className="bg-blue-600 w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg shadow-blue-200 dark:shadow-none">
             <Lock className="text-white" size={32} />
           </div>
-          <h1 className="text-2xl font-bold text-slate-800">Mission Ready</h1>
-          <p className="text-slate-500 flex items-center justify-center gap-1">
+          <h1 className="text-2xl font-bold text-slate-800 dark:text-white">Mission Ready</h1>
+          <p className="text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1 mt-1">
             出差裝備檢查清單
-            <span className="text-xs bg-blue-100 text-blue-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+            <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 px-2 py-0.5 rounded-full flex items-center gap-1">
               <Cloud size={10} /> Cloud Sync
             </span>
           </p>
         </div>
 
-        <div className="flex bg-slate-100 p-1 rounded-lg mb-6">
+        <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-lg mb-6">
           <button
             onClick={() => { setIsRegistering(false); setError(''); }}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isRegistering ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${!isRegistering ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
           >
             登入
           </button>
           <button
             onClick={() => { setIsRegistering(true); setError(''); }}
-            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isRegistering ? 'bg-white text-blue-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}
+            className={`flex-1 py-2 text-sm font-medium rounded-md transition-all ${isRegistering ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-400 shadow-sm' : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}
           >
             註冊新帳號
           </button>
@@ -101,36 +101,36 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">帳號</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">帳號</label>
             <div className="relative">
               <UserCheck className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
                 type="text"
                 value={username}
                 onChange={e => setUsername(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all text-slate-900"
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-800 outline-none transition-all text-slate-900 dark:text-white placeholder-slate-400"
                 placeholder="輸入您的帳號"
               />
             </div>
           </div>
           
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">密碼</label>
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">密碼</label>
             <div className="relative">
               <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
-                className="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition-all text-slate-900"
+                className="w-full pl-10 pr-4 py-3 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white dark:focus:bg-slate-800 outline-none transition-all text-slate-900 dark:text-white placeholder-slate-400"
                 placeholder="輸入您的密碼"
               />
             </div>
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 flex items-center gap-2">
-              <span className="w-1.5 h-1.5 bg-red-500 rounded-full"></span>
+            <div className="text-red-500 dark:text-red-400 text-sm bg-red-50 dark:bg-red-900/20 p-3 rounded-lg border border-red-100 dark:border-red-900/30 flex items-center gap-2">
+              <span className="w-1.5 h-1.5 bg-red-500 dark:bg-red-400 rounded-full"></span>
               {error}
             </div>
           )}
@@ -138,7 +138,7 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
           <button
             type="submit"
             disabled={isLoading}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-200 active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
+            className="w-full bg-blue-600 hover:bg-blue-700 dark:bg-blue-600 dark:hover:bg-blue-500 text-white font-bold py-3 rounded-xl shadow-lg shadow-blue-200 dark:shadow-none active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-2 disabled:opacity-70 disabled:cursor-not-allowed"
           >
             {isLoading ? '處理中...' : (isRegistering ? '建立雲端帳號' : '登入系統')}
           </button>
