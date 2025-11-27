@@ -197,12 +197,17 @@ export default function App() {
     finally { setIsSyncing(false); }
   };
 
+  // 在 App.tsx 內部
+
   const handleCloudDownload = async () => {
     if (!user) return;
-    if (!window.confirm("⚠️ 警告：這將會用雲端的資料「覆蓋」您目前電腦上的所有資料。\n\n確定要繼續嗎？")) return;
+    if (!window.confirm("確定要從雲端同步資料嗎？\n(您的物品庫設定將被雲端版本覆蓋，但您的行程資料會進行合併)")) return;
+    
     setIsSyncing(true);
     try {
-        const result = await cloudSync.download(user.id);
+        // Pass current 'trips' to allow merging
+        const result = await cloudSync.download(user.id, trips);
+        
         if (result.success && result.data) {
             const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats, bundles: newBundles } = result.data;
             if(newCats) setCategories(newCats);
@@ -211,7 +216,7 @@ export default function App() {
             if(newTrips) setTrips(newTrips);
             if(newFolders) setFolders(newFolders);
             if(newGroups) setGroups(newGroups);
-            alert('✅ 資料同步完成！');
+            alert('✅ 資料同步完成！(行程已合併)');
         } else { alert('❌ 下載失敗，找不到資料'); }
     } catch (e) { console.error(e); alert('❌ 下載發生錯誤'); } 
     finally { setIsSyncing(false); }

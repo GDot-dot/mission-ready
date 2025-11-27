@@ -59,14 +59,28 @@ export const cloudSync = {
   upload: async (userId: string, data: any) => {
     try {
       const { trips, ...settingsData } = data;
-      // 1. Save user settings (inventory, etc.)
+      
+      // 防呆：禁止上傳空的 Inventory 覆蓋雲端資料
+      if (!settingsData.inventory || settingsData.inventory.length === 0) {
+          const docRef = doc(db, "users", userId);
+          const docSnap = await getDoc(docRef);
+          if (docSnap.exists()) {
+              const cloudData = JSON.parse(docSnap.data().data);
+              if (cloudData.inventory && cloudData.inventory.length > 0) {
+                  return { success: false, error: "本地物品庫為空，為防止誤刪，已取消上傳。請先執行下載。" };
+              }
+          }
+      }
+
+      // 1. Save user settings (inventory, folders, etc.)
       await setDoc(doc(db, "users", userId), {
         lastUpdated: new Date().toISOString(),
         data: JSON.stringify(settingsData)
       });
 
-      // 2. Sync Trips to 'trips' collection for sharing
+      // 2. Sync Trips to 'trips' collection
       for (const trip of trips) {
+          // Only upload trips OWNED by this user
           if (trip.userId === userId) {
               await setDoc(doc(db, "trips", trip.id), trip);
           }
@@ -78,9 +92,10 @@ export const cloudSync = {
     }
   },
 
-  download: async (userId: string) => {
+  // MERGE Download: Keep local trips, add/update from cloud
+  download: async (userId: string, currentLocalTrips: any[] = []) => {
     try {
-      // 1. Get personal settings
+      // 1. Get personal settings (Inventory, Categories...) - This overwrites local settings
       const docRef = doc(db, "users", userId);
       const docSnap = await getDoc(docRef);
       let userData: any = {};
@@ -89,18 +104,36 @@ export const cloudSync = {
         userData = JSON.parse(docSnap.data().data);
       }
 
-      // 2. Get Owned Trips
+      // 2. Fetch Cloud Trips (Owned + Shared)
       const tripsRef = collection(db, "trips");
       const ownedQuery = query(tripsRef, where("userId", "==", userId));
-      const ownedDocs = await getDocs(ownedQuery);
-      const ownedTrips = ownedDocs.docs.map(d => d.data());
-
-      // 3. Get Shared Trips
       const sharedQuery = query(tripsRef, where("sharedWith", "array-contains", userId));
-      const sharedDocs = await getDocs(sharedQuery);
-      const sharedTrips = sharedDocs.docs.map(d => d.data());
+      
+      const [ownedDocs, sharedDocs] = await Promise.all([
+          getDocs(ownedQuery),
+          getDocs(sharedQuery)
+      ]);
 
-      userData.trips = [...ownedTrips, ...sharedTrips];
+      const cloudTrips = [
+          ...ownedDocs.docs.map(d => d.data()),
+          ...sharedDocs.docs.map(d => d.data())
+      ];
+
+      // 3. Smart Merge Logic
+      // Map cloud trips by ID for easy lookup
+      const cloudTripMap = new Map(cloudTrips.map((t: any) => [t.id, t]));
+      
+      // Start with cloud trips
+      const mergedTrips = [...cloudTrips];
+
+      // Add local trips that are NOT in cloud (prevent data loss of unsynced trips)
+      currentLocalTrips.forEach(localTrip => {
+          if (!cloudTripMap.has(localTrip.id)) {
+              mergedTrips.push(localTrip);
+          }
+      });
+
+      userData.trips = mergedTrips;
 
       return { success: true, data: userData };
     } catch (error) {
