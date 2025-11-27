@@ -1,5 +1,4 @@
-
-import { InventoryItem, InventoryFolder, InventoryGroup, InventoryCategory } from './types';
+import { InventoryItem, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle } from './types';
 
 // Helper to generate IDs
 const uid = () => Math.random().toString(36).substring(2, 9);
@@ -22,7 +21,6 @@ export const CATEGORY_PALETTE = [
   { name: 'Indigo', class: 'bg-indigo-50 text-indigo-700 border-indigo-200' },
 ];
 
-// Initial Categories (Using IDs that match old logic loosely for easier migration if needed)
 export const INITIAL_CATEGORIES: InventoryCategory[] = [
   { id: 'cat_tools', name: '燒錄/工具', color: 'bg-amber-50 text-amber-700 border-amber-200' },
   { id: 'cat_hardware', name: '硬體/PCBA', color: 'bg-blue-50 text-blue-700 border-blue-200' },
@@ -43,7 +41,7 @@ export const INITIAL_GROUPS: InventoryGroup[] = [
 
 export const INITIAL_INVENTORY: InventoryItem[] = [
   // --- 燒錄用 Tools ---
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_tools', name: 'ST-Link (U2-04)', defaultVersion: '' },
+  { id: 'item_stlink', folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_tools', name: 'ST-Link (U2-04)', defaultVersion: '' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_tools', name: 'U-4P-10', defaultVersion: '' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_tools', name: '3.3v PWR-5', defaultVersion: '' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_tools', name: 'U-TTL-4 (WIFI燒錄)', defaultVersion: '' },
@@ -64,9 +62,9 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_hardware', name: 'PCB板子 (硬體/軟體)', defaultVersion: '' },
 
   // --- 線材 Cables ---
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '充電器 (1、3、16)', defaultVersion: '' },
+  { id: 'item_charger', folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '充電器 (1、3、16)', defaultVersion: '' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '雙紫頭 USB A to C (傳輸)', defaultVersion: 'C1' },
-  { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '短雙白 USB A to C (傳輸)', defaultVersion: 'C2' },
+  { id: 'item_cable_white', folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '短雙白 USB A to C (傳輸)', defaultVersion: 'C2' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '編織線 USB A to C (傳輸)', defaultVersion: 'C1' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: '貼輝冠 USB A to C (傳輸)', defaultVersion: 'C1' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_cables', name: 'USB PORT Hub', defaultVersion: '*1' },
@@ -81,4 +79,23 @@ export const INITIAL_INVENTORY: InventoryItem[] = [
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_software', name: 'ROS_AP', defaultVersion: '0730' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_software', name: 'OSG_DFU', defaultVersion: '0624' },
   { id: uid(), folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID, category: 'cat_software', name: 'OSG_AP', defaultVersion: '0723' },
+];
+
+// New: Initial Bundles
+export const INITIAL_BUNDLES: InventoryBundle[] = [
+    {
+        id: 'bundle_laptop',
+        name: '筆電懶人包',
+        items: [
+            { inventoryId: 'item_charger', qty: 1 },
+            { inventoryId: 'item_cable_white', qty: 1 }
+        ]
+    },
+    {
+        id: 'bundle_burn',
+        name: '燒錄工具組',
+        items: [
+            { inventoryId: 'item_stlink', qty: 1 }
+        ]
+    }
 ];

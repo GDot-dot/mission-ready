@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory } from '../types';
+import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory, InventoryBundle } from '../types';
 import { DEFAULT_TRIP_GROUP_ID } from '../constants';
-import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X, GripVertical } from 'lucide-react';
+import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X, GripVertical, Package } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -11,6 +11,7 @@ interface TripEditorProps {
   folders: InventoryFolder[];
   groups: InventoryGroup[];
   categories: InventoryCategory[];
+  bundles: InventoryBundle[]; // Added bundles prop
   currentTrip: Trip | null;
   onSave: (trip: Trip) => void;
   onCancel: () => void;
@@ -45,7 +46,7 @@ const SortableTripItem = ({ item, info, updateItem, handleRemoveItem }: { item: 
   );
 };
 
-export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, categories, currentTrip, onSave, onCancel }) => {
+export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, categories, bundles, currentTrip, onSave, onCancel }) => {
   const [tripName, setTripName] = useState(currentTrip?.name || `出差行程 ${new Date().toLocaleDateString()}`);
   const [tripDate, setTripDate] = useState(currentTrip?.date || new Date().toISOString().split('T')[0]);
   const [tripItems, setTripItems] = useState<TripItem[]>(currentTrip?.items || []);
@@ -57,6 +58,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterFolder, setFilterFolder] = useState<string>('ALL');
   const [filterGroup, setFilterGroup] = useState<string>('ALL');
+  const [viewSource, setViewSource] = useState<'ITEMS' | 'BUNDLES'>('ITEMS');
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }), useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates }));
 
@@ -71,18 +73,40 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
     }
   };
 
-  const handleAddItem = (invItem: InventoryItem) => {
+  const handleAddItem = (invItem: InventoryItem, qty: number = 1) => {
     const newItem: TripItem = {
       id: Math.random().toString(36).substring(2, 9),
       inventoryId: invItem.id,
       tripGroupId: activeTripGroupId,
       name: invItem.name,
       category: invItem.category,
-      qty: 1,
+      qty: qty,
       version: invItem.defaultVersion || '',
       checked: false
     };
     setTripItems(prev => [...prev, newItem]);
+  };
+
+  const handleAddBundle = (bundle: InventoryBundle) => {
+      if(window.confirm(`確定要將「${bundle.name}」中的所有物品加入當前群組嗎？`)) {
+          const newItems: TripItem[] = [];
+          bundle.items.forEach(bItem => {
+              const invItem = inventory.find(i => i.id === bItem.inventoryId);
+              if (invItem) {
+                  newItems.push({
+                    id: Math.random().toString(36).substring(2, 9),
+                    inventoryId: invItem.id,
+                    tripGroupId: activeTripGroupId,
+                    name: invItem.name,
+                    category: invItem.category,
+                    qty: bItem.qty,
+                    version: invItem.defaultVersion || '',
+                    checked: false
+                  });
+              }
+          });
+          setTripItems(prev => [...prev, ...newItems]);
+      }
   };
 
   const handleRemoveItem = (itemId: string) => setTripItems(prev => prev.filter(i => i.id !== itemId));
@@ -155,28 +179,58 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
               <div className="flex items-center gap-2"><Briefcase className="text-slate-500" size={20} /><h3 className="font-bold text-slate-700 dark:text-slate-200">物品庫</h3></div>
               <span className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/20 px-2 py-1 rounded-full">點擊加入 → {tripGroups.find(g => g.id === activeTripGroupId)?.name}</span>
             </div>
-            <div className="flex flex-col md:flex-row gap-2">
-              <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="搜尋..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none" /></div>
-              <select value={filterFolder} onChange={(e) => { setFilterFolder(e.target.value); setFilterGroup('ALL'); }} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"><option value="ALL">📁 所有資料夾</option>{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select>
-              <select value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none max-w-[150px]"><option value="ALL">🗃️ 所有群組</option>{availableGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
+            
+            <div className="flex gap-1 bg-slate-100 dark:bg-slate-700 p-1 rounded-lg">
+                <button onClick={() => setViewSource('ITEMS')} className={`flex-1 py-1.5 text-xs font-medium rounded transition-all ${viewSource === 'ITEMS' ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>單項物品</button>
+                <button onClick={() => setViewSource('BUNDLES')} className={`flex-1 py-1.5 text-xs font-medium rounded transition-all ${viewSource === 'BUNDLES' ? 'bg-white dark:bg-slate-600 text-blue-600 dark:text-blue-300 shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>📦 組合包</button>
             </div>
-            <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
-              <button onClick={() => setFilterCategory('ALL')} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === 'ALL' ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>全部</button>
-              {categories.map(cat => (<button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat.id ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>{cat.name}</button>))}
-            </div>
+
+            {viewSource === 'ITEMS' ? (
+                <>
+                    <div className="flex flex-col md:flex-row gap-2">
+                    <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="搜尋..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none" /></div>
+                    <select value={filterFolder} onChange={(e) => { setFilterFolder(e.target.value); setFilterGroup('ALL'); }} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"><option value="ALL">📁 所有資料夾</option>{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select>
+                    <select value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none max-w-[150px]"><option value="ALL">🗃️ 所有群組</option>{availableGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
+                    </div>
+                    <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
+                    <button onClick={() => setFilterCategory('ALL')} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === 'ALL' ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>全部</button>
+                    {categories.map(cat => (<button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat.id ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>{cat.name}</button>))}
+                    </div>
+                </>
+            ) : (
+                <div className="text-xs text-slate-400 text-center">點擊組合包即可將內容物全部加入</div>
+            )}
           </div>
+          
           <div className="flex-1 overflow-y-auto p-4 grid grid-cols-1 lg:grid-cols-2 gap-3 content-start">
-            {filteredInventory.map(item => {
-                const info = getCategoryInfo(item.category);
-                return (
-                <button key={item.id} onClick={() => handleAddItem(item)} className="group flex flex-col items-start p-3 rounded-lg border border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all text-left bg-white dark:bg-slate-800 shadow-sm">
-                    <div className="flex justify-between w-full mb-1"><span className={`text-[10px] px-1.5 py-0.5 rounded border ${info.color}`}>{info.name}</span><Plus size={16} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" /></div>
-                    <span className="font-medium text-slate-800 dark:text-slate-200 text-sm">{item.name}</span>
-                    {item.defaultVersion && <span className="text-xs text-slate-400 mt-1">預設: {item.defaultVersion}</span>}
-                </button>
-                )
-            })}
-            {filteredInventory.length === 0 && <div className="col-span-full text-center text-slate-400 text-sm py-8">找不到物品，請檢查搜尋條件</div>}
+            {viewSource === 'ITEMS' ? (
+                <>
+                    {filteredInventory.map(item => {
+                        const info = getCategoryInfo(item.category);
+                        return (
+                        <button key={item.id} onClick={() => handleAddItem(item)} className="group flex flex-col items-start p-3 rounded-lg border border-slate-100 dark:border-slate-700 hover:border-blue-300 hover:bg-blue-50 dark:hover:bg-slate-700 transition-all text-left bg-white dark:bg-slate-800 shadow-sm">
+                            <div className="flex justify-between w-full mb-1"><span className={`text-[10px] px-1.5 py-0.5 rounded border ${info.color}`}>{info.name}</span><Plus size={16} className="text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" /></div>
+                            <span className="font-medium text-slate-800 dark:text-slate-200 text-sm">{item.name}</span>
+                            {item.defaultVersion && <span className="text-xs text-slate-400 mt-1">預設: {item.defaultVersion}</span>}
+                        </button>
+                        )
+                    })}
+                    {filteredInventory.length === 0 && <div className="col-span-full text-center text-slate-400 text-sm py-8">找不到物品</div>}
+                </>
+            ) : (
+                <>
+                    {bundles.map(bundle => (
+                        <button key={bundle.id} onClick={() => handleAddBundle(bundle)} className="group flex flex-col items-start p-4 rounded-lg border border-slate-100 dark:border-slate-700 hover:border-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition-all text-left bg-white dark:bg-slate-800 shadow-sm">
+                            <div className="flex justify-between w-full mb-2">
+                                <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"><Package size={16} className="text-purple-500"/>{bundle.name}</h4>
+                                <Plus size={16} className="text-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                            </div>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">包含 {bundle.items.length} 個物品</p>
+                        </button>
+                    ))}
+                    {bundles.length === 0 && <div className="col-span-full text-center text-slate-400 text-sm py-8">尚未建立任何組合包</div>}
+                </>
+            )}
           </div>
         </div>
 

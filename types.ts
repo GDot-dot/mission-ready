@@ -1,4 +1,3 @@
-
 export interface InventoryCategory {
   id: string;
   name: string;
@@ -32,6 +31,19 @@ export interface InventoryItem {
   category: string; // Now stores the Category ID string
   defaultVersion?: string; // Pre-fill value for version/note
 }
+
+// --- New: Bundles Interface ---
+export interface BundleItem {
+    inventoryId: string;
+    qty: number;
+}
+
+export interface InventoryBundle {
+    id: string;
+    name: string;
+    items: BundleItem[];
+}
+// ------------------------------
 
 export interface TripGroup {
   id: string;

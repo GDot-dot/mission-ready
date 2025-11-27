@@ -3,8 +3,8 @@ import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
 import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
-import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
-import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory } from './types';
+import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
+import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle } from './types';
 import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X } from 'lucide-react';
 import { cloudSync } from './firebaseConfig';
 
@@ -17,6 +17,7 @@ export default function App() {
   const [folders, setFolders] = useState<InventoryFolder[]>([]);
   const [groups, setGroups] = useState<InventoryGroup[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
+  const [bundles, setBundles] = useState<InventoryBundle[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
@@ -59,6 +60,9 @@ export default function App() {
   const loadUserData = (userId: string) => {
     const savedCategories = localStorage.getItem(`mission_ready_categories_${userId}`);
     setCategories(savedCategories ? JSON.parse(savedCategories) : INITIAL_CATEGORIES);
+
+    const savedBundles = localStorage.getItem(`mission_ready_bundles_${userId}`);
+    setBundles(savedBundles ? JSON.parse(savedBundles) : INITIAL_BUNDLES);
 
     const savedInventory = localStorage.getItem(`mission_ready_inventory_${userId}`);
     let loadedInventory: InventoryItem[] = [];
@@ -108,6 +112,7 @@ export default function App() {
   useEffect(() => { if (user) localStorage.setItem(`mission_ready_folders_${user.id}`, JSON.stringify(folders)); }, [folders, user]);
   useEffect(() => { if (user) localStorage.setItem(`mission_ready_groups_${user.id}`, JSON.stringify(groups)); }, [groups, user]);
   useEffect(() => { if (user) localStorage.setItem(`mission_ready_categories_${user.id}`, JSON.stringify(categories)); }, [categories, user]);
+  useEffect(() => { if (user) localStorage.setItem(`mission_ready_bundles_${user.id}`, JSON.stringify(bundles)); }, [bundles, user]);
 
   // --- Handlers ---
   const handleLogin = (loggedInUser: User) => {
@@ -125,6 +130,7 @@ export default function App() {
     setFolders([]);
     setGroups([]);
     setCategories([]);
+    setBundles([]);
   };
 
   const handleSaveTrip = (updatedTrip: Trip) => {
@@ -182,7 +188,7 @@ export default function App() {
   const handleCloudUpload = async () => {
     if (!user) return;
     setIsSyncing(true);
-    const data = { inventory, trips, folders, groups, categories };
+    const data = { inventory, trips, folders, groups, categories, bundles };
     try {
         const result = await cloudSync.upload(user.id, data);
         if (result.success) alert('✅ 雲端備份成功！');
@@ -198,8 +204,9 @@ export default function App() {
     try {
         const result = await cloudSync.download(user.id);
         if (result.success && result.data) {
-            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats } = result.data;
+            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats, bundles: newBundles } = result.data;
             if(newCats) setCategories(newCats);
+            if(newBundles) setBundles(newBundles);
             if(newInv) setInventory(newInv);
             if(newTrips) setTrips(newTrips);
             if(newFolders) setFolders(newFolders);
@@ -367,8 +374,8 @@ export default function App() {
             </div>
         )}
 
-        {view === 'INVENTORY' && <div className="animate-in fade-in slide-in-from-bottom-4 duration-300"><Inventory items={inventory} setItems={setInventory} folders={folders} setFolders={setFolders} groups={groups} setGroups={setGroups} categories={categories} setCategories={setCategories} /></div>}
-        {view === 'TRIP_EDIT' && <div className="animate-in fade-in zoom-in-95 duration-200"><TripEditor inventory={inventory} folders={folders} groups={groups} categories={categories} currentTrip={activeTrip} onSave={handleSaveTrip} onCancel={() => setView(activeTripId ? 'TRIP_RUN' : 'DASHBOARD')} /></div>}
+        {view === 'INVENTORY' && <div className="animate-in fade-in slide-in-from-bottom-4 duration-300"><Inventory items={inventory} setItems={setInventory} folders={folders} setFolders={setFolders} groups={groups} setGroups={setGroups} categories={categories} setCategories={setCategories} bundles={bundles} setBundles={setBundles} /></div>}
+        {view === 'TRIP_EDIT' && <div className="animate-in fade-in zoom-in-95 duration-200"><TripEditor inventory={inventory} folders={folders} groups={groups} categories={categories} bundles={bundles} currentTrip={activeTrip} onSave={handleSaveTrip} onCancel={() => setView(activeTripId ? 'TRIP_RUN' : 'DASHBOARD')} /></div>}
         {view === 'TRIP_RUN' && activeTrip && <div className="animate-in fade-in slide-in-from-right-4 duration-300"><TripRunner trip={activeTrip} categories={categories} onUpdateTrip={handleSaveTrip} onBack={() => setView('DASHBOARD')} onEdit={() => setView('TRIP_EDIT')} /></div>}
       </main>
     </div>
