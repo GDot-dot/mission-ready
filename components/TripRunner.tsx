@@ -89,7 +89,6 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
               text += `## ${g.name}\n`;
               items.forEach(i => {
                   const check = i.checked ? '[x]' : '[ ]';
-                  // 把換行符號換成空格，避免 Markdown 列表斷掉
                   const note = i.version ? ` (${i.version.replace(/\n/g, ' ')})` : '';
                   text += `- ${check} ${i.name} x${i.qty}${note}\n`;
               });
@@ -105,7 +104,6 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
       text += `---\n`;
       text += `### 📊 統計總表\n`;
       
-      // 產生簡單的統計文字
       const summaryData = generateSummary();
       summaryData.forEach(cat => {
           const catName = getCategoryInfo(cat.categoryId).name;
