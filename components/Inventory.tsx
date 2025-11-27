@@ -41,7 +41,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   const [categoryFormName, setCategoryFormName] = useState('');
   const [categoryFormColor, setCategoryFormColor] = useState(CATEGORY_PALETTE[0].class);
 
-  // Bundle State - Now inline
+  // Bundle State
   const [activeBundleId, setActiveBundleId] = useState<string | null>(null); // null = creating new or none selected
   const [isEditingBundleMode, setIsEditingBundleMode] = useState(false); // True if right panel is showing bundle editor
   const [bundleFormName, setBundleFormName] = useState('');
@@ -126,6 +126,9 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
     const matchesCategory = filterCategory === 'ALL' || item.category === filterCategory;
     return matchesSearch && matchesCategory;
   });
+
+  // Sort Items by Category
+  filteredItems.sort((a, b) => a.category.localeCompare(b.category));
 
   const getCategoryInfo = (catId: string) => categories.find(c => c.id === catId) || { name: '未知', color: 'bg-gray-100 text-gray-600 border-gray-200' };
 
