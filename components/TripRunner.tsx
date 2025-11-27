@@ -81,20 +81,30 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
   };
 
   const handleExportText = () => {
-      let text = `📋 ${localTrip.name}\n📅 ${localTrip.date}\n\n`;
+      let text = `# ${localTrip.name}\n📅 日期：${localTrip.date}\n\n`;
+      
       localTrip.groups.forEach(g => {
           const items = localTrip.items.filter(i => i.tripGroupId === g.id);
           if (items.length > 0) {
-              text += `🔹 ${g.name}:\n`;
+              text += `## ${g.name}\n`; // 使用 Markdown 標題
               items.forEach(i => {
-                  const check = i.checked ? '✅' : '⬜';
-                  const note = i.version ? ` (${i.version})` : '';
-                  text += `${check} ${i.name} x${i.qty}${note}\n`;
+                  const check = i.checked ? '[x]' : '[ ]'; // 使用 Markdown Checkbox
+                  const note = i.version ? ` (${i.version.replace(/\n/g, ' ')})` : '';
+                  text += `- ${check} ${i.name} x${i.qty}${note}\n`;
               });
               text += '\n';
           }
       });
-      navigator.clipboard.writeText(text).then(() => alert('已複製文字清單到剪貼簿！'));
+      
+      // 加上統計資訊
+      const totalItems = localTrip.items.length;
+      const completedItems = localTrip.items.filter(i => i.checked).length;
+      const progress = Math.round((completedItems / totalItems) * 100) || 0;
+      
+      text += `---\n`; // 分隔線
+      text += `📊 進度：${progress}% (${completedItems}/${totalItems})\n`;
+
+      navigator.clipboard.writeText(text).then(() => alert('已複製 Markdown 清單到剪貼簿！'));
   };
 
   return (
