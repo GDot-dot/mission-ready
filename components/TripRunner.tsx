@@ -151,7 +151,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
           </div>
       )}
 
-      <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-sm pt-4 pb-2 border-b border-slate-200 dark:border-slate-700">
+      <div className="sticky top-0 z-10 bg-slate-50/95 dark:bg-slate-950/95 backdrop-blur-sm pt-4 pb-2 border-b border-slate-200 dark:border-slate-800">
         <div className="flex items-center justify-between mb-4">
           <button onClick={onBack} className="flex items-center text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">
             <ArrowLeft size={20} className="mr-1" /> 回到列表
@@ -183,7 +183,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
                 {groupItems.map(item => {
                     const info = getCategoryInfo(item.category);
                     return (
-                    <div key={item.id} onClick={() => toggleCheck(item.id)} className={`relative cursor-pointer transition-all duration-200 p-4 rounded-xl border-2 shadow-sm flex items-start gap-4 ${item.checked ? 'bg-green-50 dark:bg-green-900/10 border-green-200 dark:border-green-800 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md'}`}>
+                    <div key={item.id} onClick={() => toggleCheck(item.id)} className={`relative cursor-pointer transition-all duration-200 p-4 rounded-xl border-2 shadow-sm flex items-start gap-4 ${item.checked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md'}`}>
                         <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors mt-1 ${item.checked ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500'}`}>
                         <CheckCircle2 size={20} className={item.checked ? 'opacity-100' : 'opacity-0'} />
                         {!item.checked && <Circle size={20} className="absolute" />}
