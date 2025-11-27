@@ -86,9 +86,9 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
       localTrip.groups.forEach(g => {
           const items = localTrip.items.filter(i => i.tripGroupId === g.id);
           if (items.length > 0) {
-              text += `## ${g.name}\n`; // 使用 Markdown 標題
+              text += `## ${g.name}\n`;
               items.forEach(i => {
-                  const check = i.checked ? '[x]' : '[ ]'; // 使用 Markdown Checkbox
+                  const check = i.checked ? '[x]' : '[ ]';
                   const note = i.version ? ` (${i.version.replace(/\n/g, ' ')})` : '';
                   text += `- ${check} ${i.name} x${i.qty}${note}\n`;
               });
@@ -96,13 +96,12 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
           }
       });
       
-      // 加上統計資訊
       const totalItems = localTrip.items.length;
       const completedItems = localTrip.items.filter(i => i.checked).length;
-      const progress = Math.round((completedItems / totalItems) * 100) || 0;
+      const currentProgress = Math.round((completedItems / totalItems) * 100) || 0;
       
-      text += `---\n`; // 分隔線
-      text += `📊 進度：${progress}% (${completedItems}/${totalItems})\n`;
+      text += `---\n`;
+      text += `📊 進度：${currentProgress}% (${completedItems}/${totalItems})\n`;
 
       navigator.clipboard.writeText(text).then(() => alert('已複製 Markdown 清單到剪貼簿！'));
   };
