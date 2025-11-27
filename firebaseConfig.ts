@@ -43,7 +43,6 @@ export const cloudAuth = {
       return { success: false, error: error.message };
     }
   },
-  // New: Find user ID by username for sharing
   findUserByUsername: async (username: string) => {
       try {
           const accountRef = doc(db, "user_accounts", username);
@@ -57,20 +56,17 @@ export const cloudAuth = {
 };
 
 export const cloudSync = {
-  // Upload: Save personal data AND sync individual trips to 'trips' collection
   upload: async (userId: string, data: any) => {
     try {
-      // 1. Save personal inventory/settings
       const { trips, ...settingsData } = data;
+      // 1. Save user settings (inventory, etc.)
       await setDoc(doc(db, "users", userId), {
         lastUpdated: new Date().toISOString(),
-        data: JSON.stringify(settingsData) // Only save settings, inventory, categories here
+        data: JSON.stringify(settingsData)
       });
 
-      // 2. Save Trips individually to 'trips' collection for sharing
-      const tripsCollection = collection(db, "trips");
+      // 2. Sync Trips to 'trips' collection for sharing
       for (const trip of trips) {
-          // Only upload trips owned by this user
           if (trip.userId === userId) {
               await setDoc(doc(db, "trips", trip.id), trip);
           }
@@ -82,7 +78,6 @@ export const cloudSync = {
     }
   },
 
-  // Download: Get settings AND fetch all relevant trips (owned + shared)
   download: async (userId: string) => {
     try {
       // 1. Get personal settings
@@ -105,7 +100,6 @@ export const cloudSync = {
       const sharedDocs = await getDocs(sharedQuery);
       const sharedTrips = sharedDocs.docs.map(d => d.data());
 
-      // Combine
       userData.trips = [...ownedTrips, ...sharedTrips];
 
       return { success: true, data: userData };
@@ -115,14 +109,11 @@ export const cloudSync = {
     }
   },
 
-  // Share a trip
   shareTrip: async (tripId: string, targetUsername: string) => {
       try {
-          // 1. Find target user ID
           const userResult = await cloudAuth.findUserByUsername(targetUsername);
           if (!userResult.success || !userResult.userId) return { success: false, error: "找不到該使用者" };
 
-          // 2. Update trip document
           const tripRef = doc(db, "trips", tripId);
           await updateDoc(tripRef, {
               sharedWith: arrayUnion(userResult.userId)
@@ -130,7 +121,8 @@ export const cloudSync = {
           
           return { success: true };
       } catch (error) {
-          return { success: false, error: "分享失敗" };
+          console.error("Share failed:", error);
+          return { success: false, error: "分享失敗，請確認網路或權限" };
       }
   }
 };

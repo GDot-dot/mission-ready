@@ -11,9 +11,16 @@ interface TripRunnerProps {
   onEdit: () => void;
 }
 
-// ... (Summary Interfaces omitted for brevity, same as before) ...
-interface SummaryItem { name: string; totalQty: number; details: { version: string, qty: number }[]; }
-interface SummaryCategory { categoryId: string; items: SummaryItem[]; }
+interface SummaryItem {
+    name: string;
+    totalQty: number;
+    details: { version: string, qty: number }[];
+}
+
+interface SummaryCategory {
+    categoryId: string;
+    items: SummaryItem[];
+}
 
 export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpdateTrip, onBack, onEdit }) => {
   const [localTrip, setLocalTrip] = useState<Trip>(trip);
@@ -23,31 +30,51 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
 
   useEffect(() => { setLocalTrip(trip); }, [trip]);
 
-  // ... (toggleCheck, progress, getCategoryInfo, generateSummary, handleExportText logic same as before) ...
   const toggleCheck = (itemId: string) => {
-    const updatedItems = localTrip.items.map(item => item.id === itemId ? { ...item, checked: !item.checked } : item);
+    const updatedItems = localTrip.items.map(item => 
+      item.id === itemId ? { ...item, checked: !item.checked } : item
+    );
     const updatedTrip = { ...localTrip, items: updatedItems };
     const allChecked = updatedItems.every(i => i.checked);
     updatedTrip.status = allChecked ? 'completed' : 'active';
     setLocalTrip(updatedTrip);
     onUpdateTrip(updatedTrip);
   };
+
   const progress = Math.round((localTrip.items.filter(i => i.checked).length / localTrip.items.length) * 100) || 0;
-  const getCategoryInfo = (catId: string) => { const cat = categories.find(c => c.id === catId); return { name: cat?.name || '未知', color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200' }; };
-  
+
+  const getCategoryInfo = (catId: string) => {
+      const cat = categories.find(c => c.id === catId);
+      return {
+          name: cat?.name || '未知',
+          color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200'
+      };
+  };
+
   const generateSummary = () => {
       const summary: SummaryCategory[] = [];
       const itemsByCategory: Record<string, TripItem[]> = {};
-      localTrip.items.forEach(item => { if(!itemsByCategory[item.category]) itemsByCategory[item.category] = []; itemsByCategory[item.category].push(item); });
+      localTrip.items.forEach(item => {
+          if(!itemsByCategory[item.category]) itemsByCategory[item.category] = [];
+          itemsByCategory[item.category].push(item);
+      });
+
       Object.keys(itemsByCategory).forEach(catId => {
           const items = itemsByCategory[catId];
           const itemsByName: Record<string, TripItem[]> = {};
-          items.forEach(item => { if(!itemsByName[item.name]) itemsByName[item.name] = []; itemsByName[item.name].push(item); });
+          items.forEach(item => {
+              if(!itemsByName[item.name]) itemsByName[item.name] = [];
+              itemsByName[item.name].push(item);
+          });
+
           const summaryItems: SummaryItem[] = Object.keys(itemsByName).map(name => {
               const variants = itemsByName[name];
               const totalQty = variants.reduce((sum, i) => sum + i.qty, 0);
               const detailsMap: Record<string, number> = {};
-              variants.forEach(v => { const key = v.version || '(無備註)'; detailsMap[key] = (detailsMap[key] || 0) + v.qty; });
+              variants.forEach(v => {
+                  const key = v.version || '(無備註)';
+                  detailsMap[key] = (detailsMap[key] || 0) + v.qty;
+              });
               const details = Object.keys(detailsMap).map(ver => ({ version: ver, qty: detailsMap[ver] }));
               return { name, totalQty, details };
           });
@@ -80,7 +107,6 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
       navigator.clipboard.writeText(text).then(() => alert('已複製 Markdown 清單到剪貼簿！'));
   };
 
-  // New: Share Logic
   const handleShareTrip = async () => {
       if (!shareUsername.trim()) return;
       if (window.confirm(`確定要將行程分享給「${shareUsername}」嗎？\n對方登入後按下「下載」即可看到此行程。`)) {
@@ -97,7 +123,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 pb-20">
-      {/* Summary Modal (Same as before) */}
+      {/* Summary Modal */}
       {showSummary && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
               <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-2xl shadow-2xl max-h-[85vh] flex flex-col border border-slate-200 dark:border-slate-700">
