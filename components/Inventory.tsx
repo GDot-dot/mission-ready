@@ -256,7 +256,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                                         {inBundle && (
                                             <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800 flex items-center justify-between" onClick={e => e.stopPropagation()}>
                                                 <span className="text-xs font-bold text-blue-700 dark:text-blue-300">數量:</span>
-                                                <input type="number" min="1" value={inBundle.qty} onChange={e => updateBundleItemQty(item.id, parseInt(e.target.value)||1)} className="w-16 text-center text-sm font-bold bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-100 rounded py-1 outline-none focus:ring-2 focus:ring-blue-500" />
+                                                <input type="number" min="1" value={inBundle.qty} onChange={e => updateBundleItemQty(item.id, parseInt(e.target.value)||1)} className="w-16 text-center text-sm font-bold bg-white dark:bg-slate-700 border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-100 rounded py-1 outline-none focus:ring-2 focus:ring-blue-500" />
                                             </div>
                                         )}
                                     </div>
