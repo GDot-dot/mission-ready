@@ -89,6 +89,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
               text += `## ${g.name}\n`;
               items.forEach(i => {
                   const check = i.checked ? '[x]' : '[ ]';
+                  // 把換行符號換成空格，避免 Markdown 列表斷掉
                   const note = i.version ? ` (${i.version.replace(/\n/g, ' ')})` : '';
                   text += `- ${check} ${i.name} x${i.qty}${note}\n`;
               });
@@ -96,14 +97,29 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
           }
       });
       
+      // 統計資訊
       const totalItems = localTrip.items.length;
       const completedItems = localTrip.items.filter(i => i.checked).length;
       const currentProgress = Math.round((completedItems / totalItems) * 100) || 0;
       
       text += `---\n`;
-      text += `📊 進度：${currentProgress}% (${completedItems}/${totalItems})\n`;
+      text += `### 📊 統計總表\n`;
+      
+      // 產生簡單的統計文字
+      const summaryData = generateSummary();
+      summaryData.forEach(cat => {
+          const catName = getCategoryInfo(cat.categoryId).name;
+          text += `**${catName}**\n`;
+          cat.items.forEach(item => {
+              text += `- ${item.name}: ${item.totalQty}\n`;
+          });
+          text += `\n`;
+      });
 
-      navigator.clipboard.writeText(text).then(() => alert('已複製 Markdown 清單到剪貼簿！'));
+      text += `---\n`;
+      text += `進度：${currentProgress}% (${completedItems}/${totalItems})`;
+
+      navigator.clipboard.writeText(text).then(() => alert('已複製 Markdown 清單 (含統計) 到剪貼簿！'));
   };
 
   return (
