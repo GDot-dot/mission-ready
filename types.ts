@@ -32,7 +32,19 @@ export interface InventoryItem {
   defaultVersion?: string; // Pre-fill value for version/note
 }
 
-// --- New: Bundles Interface ---
+
+export interface Trip {
+  id: string;
+  userId: string; // Owner ID
+  sharedWith?: string[]; // New: List of User IDs who can access this trip
+  name: string;
+  date: string;
+  status: 'planning' | 'active' | 'completed';
+  groups: TripGroup[];
+  items: TripItem[];
+}
+
+
 export interface BundleItem {
     inventoryId: string;
     qty: number;
@@ -43,7 +55,7 @@ export interface InventoryBundle {
     name: string;
     items: BundleItem[];
 }
-// ------------------------------
+
 
 export interface TripGroup {
   id: string;
