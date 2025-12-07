@@ -53,7 +53,6 @@ export const cloudAuth = {
           return { success: false, error: "搜尋失敗" };
       }
   },
-  // New: Get username from ID for displaying shared list
   findUsernameById: async (userId: string) => {
       try {
           const q = query(collection(db, "user_accounts"), where("userId", "==", userId));
@@ -71,7 +70,7 @@ export const cloudSync = {
     try {
       const { trips, ...settingsData } = data;
       
-      // 防呆：禁止上傳空的 Inventory 覆蓋雲端資料
+      // Safety check: Prevent uploading empty inventory over existing data
       if (!settingsData.inventory || settingsData.inventory.length === 0) {
           const docRef = doc(db, "users", userId);
           const docSnap = await getDoc(docRef);
@@ -90,9 +89,10 @@ export const cloudSync = {
       });
 
       // 2. Sync Trips to 'trips' collection
-      // IMPORTANT: Update cloud trip data to match local data (including sharedWith status)
+      // KEY UPDATE: Upload BOTH owned trips AND shared trips that this user has modified
       for (const trip of trips) {
-          if (trip.userId === userId) {
+          // If I am the owner OR I am in the sharedWith list
+          if (trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId))) {
               await setDoc(doc(db, "trips", trip.id), trip);
           }
       }
@@ -133,7 +133,7 @@ export const cloudSync = {
       const cloudTripMap = new Map(cloudTrips.map((t: any) => [t.id, t]));
       const mergedTrips = [...cloudTrips];
 
-      // Keep local unsynced trips
+      // Keep local unsynced trips (that are ONLY local, not on cloud yet)
       currentLocalTrips.forEach(localTrip => {
           if (!cloudTripMap.has(localTrip.id) && localTrip.userId === userId) {
               mergedTrips.push(localTrip);
@@ -155,23 +155,20 @@ export const cloudSync = {
           if (!userResult.success || !userResult.userId) return { success: false, error: "找不到該使用者" };
 
           const tripRef = doc(db, "trips", tripId);
-          // Add to sharedWith array
           await updateDoc(tripRef, {
               sharedWith: arrayUnion(userResult.userId)
           });
           
-          return { success: true, userId: userResult.userId }; // Return ID to update local state immediately
+          return { success: true, userId: userResult.userId };
       } catch (error) {
           console.error("Share failed:", error);
           return { success: false, error: "分享失敗，請確認網路或權限" };
       }
   },
 
-  // New: Unshare function
   unshareTrip: async (tripId: string, targetUserId: string) => {
       try {
           const tripRef = doc(db, "trips", tripId);
-          // Remove from sharedWith array
           await updateDoc(tripRef, {
               sharedWith: arrayRemove(targetUserId)
           });
