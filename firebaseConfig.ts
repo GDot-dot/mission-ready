@@ -1,5 +1,5 @@
 import firebase from "firebase/compat/app";
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, arrayUnion } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -52,6 +52,17 @@ export const cloudAuth = {
       } catch (error) {
           return { success: false, error: "搜尋失敗" };
       }
+  },
+  // New: Get username from ID for displaying shared list
+  findUsernameById: async (userId: string) => {
+      try {
+          const q = query(collection(db, "user_accounts"), where("userId", "==", userId));
+          const snap = await getDocs(q);
+          if (!snap.empty) return { success: true, username: snap.docs[0].id };
+          return { success: false, error: "Unknown" };
+      } catch (error) {
+          return { success: false, error: "Error" };
+      }
   }
 };
 
@@ -79,8 +90,8 @@ export const cloudSync = {
       });
 
       // 2. Sync Trips to 'trips' collection
+      // IMPORTANT: Update cloud trip data to match local data (including sharedWith status)
       for (const trip of trips) {
-          // Only upload trips OWNED by this user
           if (trip.userId === userId) {
               await setDoc(doc(db, "trips", trip.id), trip);
           }
@@ -92,10 +103,9 @@ export const cloudSync = {
     }
   },
 
-  // MERGE Download: Keep local trips, add/update from cloud
   download: async (userId: string, currentLocalTrips: any[] = []) => {
     try {
-      // 1. Get personal settings (Inventory, Categories...) - This overwrites local settings
+      // 1. Get personal settings
       const docRef = doc(db, "users", userId);
       const docSnap = await getDoc(docRef);
       let userData: any = {};
@@ -120,15 +130,12 @@ export const cloudSync = {
       ];
 
       // 3. Smart Merge Logic
-      // Map cloud trips by ID for easy lookup
       const cloudTripMap = new Map(cloudTrips.map((t: any) => [t.id, t]));
-      
-      // Start with cloud trips
       const mergedTrips = [...cloudTrips];
 
-      // Add local trips that are NOT in cloud (prevent data loss of unsynced trips)
+      // Keep local unsynced trips
       currentLocalTrips.forEach(localTrip => {
-          if (!cloudTripMap.has(localTrip.id)) {
+          if (!cloudTripMap.has(localTrip.id) && localTrip.userId === userId) {
               mergedTrips.push(localTrip);
           }
       });
@@ -148,14 +155,30 @@ export const cloudSync = {
           if (!userResult.success || !userResult.userId) return { success: false, error: "找不到該使用者" };
 
           const tripRef = doc(db, "trips", tripId);
+          // Add to sharedWith array
           await updateDoc(tripRef, {
               sharedWith: arrayUnion(userResult.userId)
           });
           
-          return { success: true };
+          return { success: true, userId: userResult.userId }; // Return ID to update local state immediately
       } catch (error) {
           console.error("Share failed:", error);
           return { success: false, error: "分享失敗，請確認網路或權限" };
+      }
+  },
+
+  // New: Unshare function
+  unshareTrip: async (tripId: string, targetUserId: string) => {
+      try {
+          const tripRef = doc(db, "trips", tripId);
+          // Remove from sharedWith array
+          await updateDoc(tripRef, {
+              sharedWith: arrayRemove(targetUserId)
+          });
+          return { success: true };
+      } catch (error) {
+          console.error("Unshare failed:", error);
+          return { success: false, error: "取消分享失敗" };
       }
   }
 };
