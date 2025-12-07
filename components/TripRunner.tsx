@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Trip, TripItem, InventoryCategory } from '../types';
-import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X, Share, Users } from 'lucide-react';
-import { cloudSync } from '../firebaseConfig';
+import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X, Share, Users, Trash2 } from 'lucide-react';
+import { cloudSync, cloudAuth } from '../firebaseConfig';
 
 interface TripRunnerProps {
   trip: Trip;
@@ -11,29 +11,37 @@ interface TripRunnerProps {
   onEdit: () => void;
 }
 
-interface SummaryItem {
-    name: string;
-    totalQty: number;
-    details: { version: string, qty: number }[];
-}
-
-interface SummaryCategory {
-    categoryId: string;
-    items: SummaryItem[];
-}
+interface SummaryItem { name: string; totalQty: number; details: { version: string, qty: number }[]; }
+interface SummaryCategory { categoryId: string; items: SummaryItem[]; }
 
 export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpdateTrip, onBack, onEdit }) => {
   const [localTrip, setLocalTrip] = useState<Trip>(trip);
   const [showSummary, setShowSummary] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [shareUsername, setShareUsername] = useState('');
+  const [sharedUsersList, setSharedUsersList] = useState<{id: string, name: string}[]>([]);
 
   useEffect(() => { setLocalTrip(trip); }, [trip]);
 
+  // Load shared users names when sharing modal opens
+  useEffect(() => {
+      if (isSharing && localTrip.sharedWith && localTrip.sharedWith.length > 0) {
+          const loadNames = async () => {
+              const list = [];
+              for (const uid of localTrip.sharedWith!) {
+                  const res = await cloudAuth.findUsernameById(uid);
+                  list.push({ id: uid, name: res.success ? res.username : 'Unknown' });
+              }
+              setSharedUsersList(list);
+          };
+          loadNames();
+      } else {
+          setSharedUsersList([]);
+      }
+  }, [isSharing, localTrip.sharedWith]);
+
   const toggleCheck = (itemId: string) => {
-    const updatedItems = localTrip.items.map(item => 
-      item.id === itemId ? { ...item, checked: !item.checked } : item
-    );
+    const updatedItems = localTrip.items.map(item => item.id === itemId ? { ...item, checked: !item.checked } : item);
     const updatedTrip = { ...localTrip, items: updatedItems };
     const allChecked = updatedItems.every(i => i.checked);
     updatedTrip.status = allChecked ? 'completed' : 'active';
@@ -42,39 +50,21 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
   };
 
   const progress = Math.round((localTrip.items.filter(i => i.checked).length / localTrip.items.length) * 100) || 0;
-
-  const getCategoryInfo = (catId: string) => {
-      const cat = categories.find(c => c.id === catId);
-      return {
-          name: cat?.name || '未知',
-          color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200'
-      };
-  };
-
+  const getCategoryInfo = (catId: string) => { const cat = categories.find(c => c.id === catId); return { name: cat?.name || '未知', color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200' }; };
+  
   const generateSummary = () => {
       const summary: SummaryCategory[] = [];
       const itemsByCategory: Record<string, TripItem[]> = {};
-      localTrip.items.forEach(item => {
-          if(!itemsByCategory[item.category]) itemsByCategory[item.category] = [];
-          itemsByCategory[item.category].push(item);
-      });
-
+      localTrip.items.forEach(item => { if(!itemsByCategory[item.category]) itemsByCategory[item.category] = []; itemsByCategory[item.category].push(item); });
       Object.keys(itemsByCategory).forEach(catId => {
           const items = itemsByCategory[catId];
           const itemsByName: Record<string, TripItem[]> = {};
-          items.forEach(item => {
-              if(!itemsByName[item.name]) itemsByName[item.name] = [];
-              itemsByName[item.name].push(item);
-          });
-
+          items.forEach(item => { if(!itemsByName[item.name]) itemsByName[item.name] = []; itemsByName[item.name].push(item); });
           const summaryItems: SummaryItem[] = Object.keys(itemsByName).map(name => {
               const variants = itemsByName[name];
               const totalQty = variants.reduce((sum, i) => sum + i.qty, 0);
               const detailsMap: Record<string, number> = {};
-              variants.forEach(v => {
-                  const key = v.version || '(無備註)';
-                  detailsMap[key] = (detailsMap[key] || 0) + v.qty;
-              });
+              variants.forEach(v => { const key = v.version || '(無備註)'; detailsMap[key] = (detailsMap[key] || 0) + v.qty; });
               const details = Object.keys(detailsMap).map(ver => ({ version: ver, qty: detailsMap[ver] }));
               return { name, totalQty, details };
           });
@@ -109,14 +99,31 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
 
   const handleShareTrip = async () => {
       if (!shareUsername.trim()) return;
-      if (window.confirm(`確定要將行程分享給「${shareUsername}」嗎？\n對方登入後按下「下載」即可看到此行程。`)) {
+      if (window.confirm(`確定要將行程分享給「${shareUsername}」嗎？`)) {
           const result = await cloudSync.shareTrip(localTrip.id, shareUsername);
-          if (result.success) {
+          if (result.success && result.userId) {
               alert('✅ 分享成功！');
-              setIsSharing(false);
+              // Update local state immediately
+              const updatedTrip = { ...localTrip, sharedWith: [...(localTrip.sharedWith || []), result.userId] };
+              setLocalTrip(updatedTrip);
+              onUpdateTrip(updatedTrip);
               setShareUsername('');
           } else {
               alert('❌ 分享失敗：' + result.error);
+          }
+      }
+  };
+
+  const handleUnshareTrip = async (userId: string, username: string) => {
+      if(window.confirm(`確定要取消對「${username}」的分享嗎？`)) {
+          const result = await cloudSync.unshareTrip(localTrip.id, userId);
+          if(result.success) {
+              alert('✅ 已取消分享');
+              const updatedTrip = { ...localTrip, sharedWith: localTrip.sharedWith?.filter(id => id !== userId) };
+              setLocalTrip(updatedTrip);
+              onUpdateTrip(updatedTrip); // This updates App state, which will be synced to cloud on next upload
+          } else {
+              alert('❌ 取消失敗');
           }
       }
   };
@@ -162,18 +169,37 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 backdrop-blur-sm">
               <div className="bg-white dark:bg-slate-800 rounded-xl w-full max-w-md shadow-2xl flex flex-col border border-slate-200 dark:border-slate-700">
                   <div className="p-4 border-b dark:border-slate-700 flex justify-between items-center bg-slate-50 dark:bg-slate-900/50 rounded-t-xl">
-                      <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white"><Users className="text-blue-600" /> 分享行程</h3>
+                      <h3 className="font-bold text-lg flex items-center gap-2 text-slate-800 dark:text-white"><Users className="text-blue-600" /> 分享設定</h3>
                       <button onClick={() => setIsSharing(false)} className="p-1 hover:bg-slate-200 dark:hover:bg-slate-700 rounded-full transition-colors"><X size={20} className="text-slate-500" /></button>
                   </div>
-                  <div className="p-6 space-y-4">
-                      <p className="text-sm text-slate-500 dark:text-slate-400">請輸入對方的帳號名稱。分享後，對方將能檢視並編輯此行程。</p>
-                      <div>
-                          <label className="block text-xs font-bold text-slate-400 mb-1 uppercase">對方帳號</label>
-                          <input autoFocus className="w-full border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="例如: Frank" value={shareUsername} onChange={e => setShareUsername(e.target.value)} />
+                  <div className="p-6 space-y-6">
+                      <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-400 uppercase">新增分享對象</label>
+                          <div className="flex gap-2">
+                              <input autoFocus className="flex-1 border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white rounded-lg px-3 py-2 outline-none focus:ring-2 focus:ring-blue-500" placeholder="輸入對方帳號..." value={shareUsername} onChange={e => setShareUsername(e.target.value)} />
+                              <button onClick={handleShareTrip} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm whitespace-nowrap">加入</button>
+                          </div>
                       </div>
-                      <div className="flex justify-end gap-2 pt-2">
-                          <button onClick={() => setIsSharing(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 rounded-lg">取消</button>
-                          <button onClick={handleShareTrip} className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 shadow-sm">確認分享</button>
+
+                      <div className="space-y-2">
+                          <label className="block text-xs font-bold text-slate-400 uppercase">已分享給</label>
+                          {sharedUsersList.length === 0 ? (
+                              <p className="text-sm text-slate-400 italic bg-slate-50 dark:bg-slate-900 p-3 rounded-lg text-center">目前沒有分享給任何人</p>
+                          ) : (
+                              <div className="bg-slate-50 dark:bg-slate-900 rounded-lg border border-slate-200 dark:border-slate-700 divide-y divide-slate-200 dark:divide-slate-700">
+                                  {sharedUsersList.map(u => (
+                                      <div key={u.id} className="flex items-center justify-between p-3">
+                                          <div className="flex items-center gap-2">
+                                              <div className="w-8 h-8 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center font-bold text-xs">{u.name.substring(0,2).toUpperCase()}</div>
+                                              <span className="text-sm font-medium text-slate-700 dark:text-slate-200">{u.name}</span>
+                                          </div>
+                                          <button onClick={() => handleUnshareTrip(u.id, u.name)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="取消分享">
+                                              <Trash2 size={16} />
+                                          </button>
+                                      </div>
+                                  ))}
+                              </div>
+                          )}
                       </div>
                   </div>
               </div>
@@ -187,7 +213,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
             <ArrowLeft size={20} className="mr-1" /> 回到列表
           </button>
           <div className="flex items-center gap-2">
-            <button onClick={() => setIsSharing(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-medium shadow-sm transition-all" title="分享給同事"><Users size={16} /><span className="hidden sm:inline">分享</span></button>
+            <button onClick={() => setIsSharing(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/20 font-medium shadow-sm transition-all" title="分享設定"><Users size={16} /><span className="hidden sm:inline">分享</span></button>
             <div className="h-4 w-px bg-slate-300 dark:bg-slate-600 mx-1"></div>
             <button onClick={handleExportText} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition-all" title="匯出文字清單"><Share size={16} /><span className="hidden sm:inline">匯出</span></button>
             <button onClick={() => setShowSummary(true)} className="flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/20 font-medium shadow-sm transition-all" title="查看統計總表"><PieChart size={16} /><span className="hidden sm:inline">統計</span></button>
