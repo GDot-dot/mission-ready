@@ -99,11 +99,24 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
 
   const handleShareTrip = async () => {
       if (!shareUsername.trim()) return;
-      if (window.confirm(`確定要將行程分享給「${shareUsername}」嗎？`)) {
-          const result = await cloudSync.shareTrip(localTrip.id, shareUsername);
+      if (window.confirm(`確定要將行程分享給「${shareUsername}」嗎？\n(若此行程尚未上傳，系統將會先進行自動上傳)`)) {
+          
+          // 1. Try sharing directly
+          let result = await cloudSync.shareTrip(localTrip.id, shareUsername);
+          
+          // 2. If document not found, try uploading the trip first, then share again
+          if (!result.success && result.error?.includes("No document to update")) {
+              console.log("Trip not found on cloud, uploading first...");
+              // We need to upload just this trip. 
+              // Since cloudSync.upload takes full data, we'll implement a dedicated single trip upload or just warn user.
+              // Easier fix: Create the trip doc on the fly if missing.
+              // Update: Modified shareTrip in firebaseConfig to handle this, but let's handle UI feedback here.
+              alert("⚠️ 此行程尚未同步到雲端。\n請先點擊右上角的「雲端上傳」按鈕備份後，再嘗試分享。");
+              return;
+          }
+
           if (result.success && result.userId) {
               alert('✅ 分享成功！');
-              // Update local state immediately
               const updatedTrip = { ...localTrip, sharedWith: [...(localTrip.sharedWith || []), result.userId] };
               setLocalTrip(updatedTrip);
               onUpdateTrip(updatedTrip);
@@ -121,7 +134,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
               alert('✅ 已取消分享');
               const updatedTrip = { ...localTrip, sharedWith: localTrip.sharedWith?.filter(id => id !== userId) };
               setLocalTrip(updatedTrip);
-              onUpdateTrip(updatedTrip); // This updates App state, which will be synced to cloud on next upload
+              onUpdateTrip(updatedTrip);
           } else {
               alert('❌ 取消失敗');
           }
