@@ -91,8 +91,11 @@ export const cloudSync = {
       // 2. Sync Trips to 'trips' collection
       // KEY UPDATE: Upload BOTH owned trips AND shared trips that this user has modified
       for (const trip of trips) {
-          // If I am the owner OR I am in the sharedWith list
-          if (trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId))) {
+          // Check: Am I the owner? OR Am I in the shared list?
+          const isOwner = trip.userId === userId;
+          const isSharedWithMe = trip.sharedWith && trip.sharedWith.includes(userId);
+
+          if (isOwner || isSharedWithMe) {
               await setDoc(doc(db, "trips", trip.id), trip);
           }
       }
