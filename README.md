@@ -19,7 +19,8 @@ View your app in AI Studio: https://ai.studio/apps/drive/1FOCMDm8Y6944i7V5ZyOzPj
 3. Run the app:
    `npm run dev`
 
-
+網站網址
+https://gdot-dot.github.io/mission-ready/
 【功能】
 暗黑模式 (隨時切換，保護眼睛)。
 強大的拖曳功能 (支援手機/電腦)。

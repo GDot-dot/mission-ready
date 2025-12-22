@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory, InventoryBundle } from '../types';
 import { DEFAULT_TRIP_GROUP_ID } from '../constants';
@@ -11,7 +12,7 @@ interface TripEditorProps {
   folders: InventoryFolder[];
   groups: InventoryGroup[];
   categories: InventoryCategory[];
-  bundles: InventoryBundle[]; // Added bundles prop
+  bundles: InventoryBundle[];
   currentTrip: Trip | null;
   onSave: (trip: Trip) => void;
   onCancel: () => void;
@@ -156,6 +157,20 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const activeTripItems = tripItems.filter(item => item.tripGroupId === activeTripGroupId);
   const getCategoryInfo = (catId: string) => { const cat = categories.find(c => c.id === catId); return { name: cat?.name || '未知', color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200' }; };
 
+  // --- Dynamic Category Filtering Logic ---
+  // Get all items that are in the currently selected folder and group
+  const itemsInCurrentScope = inventory.filter(item => 
+      (filterFolder === 'ALL' || item.folderId === filterFolder) &&
+      (filterGroup === 'ALL' || item.groupId === filterGroup)
+  );
+  
+  // Extract unique category IDs from these items
+  const relevantCategoryIds = new Set(itemsInCurrentScope.map(item => item.category));
+  
+  // Filter the main categories list to only show those that exist in the current scope
+  const filteredCategories = categories.filter(cat => relevantCategoryIds.has(cat.id));
+  // ----------------------------------------
+
   return (
     <div className="h-[calc(100vh-100px)] flex flex-col gap-4">
       <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex flex-col md:flex-row justify-between items-start md:items-center gap-4 shrink-0">
@@ -189,12 +204,12 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
                 <>
                     <div className="flex flex-col md:flex-row gap-2">
                     <div className="relative flex-1"><Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} /><input type="text" placeholder="搜尋..." value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} className="w-full pl-9 pr-3 py-1.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded text-sm text-slate-900 dark:text-white focus:ring-1 focus:ring-blue-500 outline-none" /></div>
-                    <select value={filterFolder} onChange={(e) => { setFilterFolder(e.target.value); setFilterGroup('ALL'); }} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"><option value="ALL">📁 所有資料夾</option>{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select>
-                    <select value={filterGroup} onChange={(e) => setFilterGroup(e.target.value)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none max-w-[150px]"><option value="ALL">🗃️ 所有群組</option>{availableGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
+                    <select value={filterFolder} onChange={(e) => { setFilterFolder(e.target.value); setFilterGroup('ALL'); setFilterCategory('ALL'); }} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none"><option value="ALL">📁 所有資料夾</option>{folders.map(f => (<option key={f.id} value={f.id}>{f.name}</option>))}</select>
+                    <select value={filterGroup} onChange={(e) => { setFilterGroup(e.target.value); setFilterCategory('ALL'); }} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none max-w-[150px]"><option value="ALL">🗃️ 所有群組</option>{availableGroups.map(g => (<option key={g.id} value={g.id}>{g.name}</option>))}</select>
                     </div>
                     <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-hide">
                     <button onClick={() => setFilterCategory('ALL')} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === 'ALL' ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>全部</button>
-                    {categories.map(cat => (<button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat.id ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>{cat.name}</button>))}
+                    {filteredCategories.map(cat => (<button key={cat.id} onClick={() => setFilterCategory(cat.id)} className={`px-3 py-1 rounded-full text-xs font-medium whitespace-nowrap transition-colors ${filterCategory === cat.id ? 'bg-slate-800 dark:bg-white text-white dark:text-slate-900' : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:bg-slate-100'}`}>{cat.name}</button>))}
                     </div>
                 </>
             ) : (
