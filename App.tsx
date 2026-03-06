@@ -5,7 +5,7 @@ import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
 import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle } from './types';
-import { ListChecks, Plus, Calendar, ChevronRight, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle } from 'lucide-react';
+import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle } from 'lucide-react';
 import { cloudSync } from './firebaseConfig';
 
 export default function App() {
@@ -423,7 +423,6 @@ export default function App() {
                                                     <div className="h-full bg-blue-500 rounded-full" style={{ width: `${percent}%` }}></div>
                                                 </div>
                                             </div>
-                                            <ChevronRight className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-200 dark:text-slate-600 opacity-0 group-hover:opacity-100 transition-all transform group-hover:translate-x-1" />
                                         </div>
                                     )
                                 })

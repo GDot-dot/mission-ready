@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Trip, TripItem, InventoryCategory } from '../types';
-import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X, Share, Users, Trash2 } from 'lucide-react';
+import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X, Share, Users, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
 import { cloudSync, cloudAuth } from '../firebaseConfig';
 
 interface TripRunnerProps {
@@ -20,6 +20,9 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
   const [isSharing, setIsSharing] = useState(false);
   const [shareUsername, setShareUsername] = useState('');
   const [sharedUsersList, setSharedUsersList] = useState<{id: string, name: string}[]>([]);
+  
+  // Collapsed Groups State
+  const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
 
   useEffect(() => { setLocalTrip(trip); }, [trip]);
 
@@ -47,6 +50,18 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
     updatedTrip.status = allChecked ? 'completed' : 'active';
     setLocalTrip(updatedTrip);
     onUpdateTrip(updatedTrip);
+  };
+
+  const toggleGroupCollapse = (groupId: string) => {
+      setCollapsedGroups(prev => {
+          const newSet = new Set(prev);
+          if (newSet.has(groupId)) {
+              newSet.delete(groupId);
+          } else {
+              newSet.add(groupId);
+          }
+          return newSet;
+      });
   };
 
   const progress = Math.round((localTrip.items.filter(i => i.checked).length / localTrip.items.length) * 100) || 0;
@@ -240,35 +255,54 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
         </div>
       </div>
 
-      {/* Groups Rendering logic ... same as before */}
+      {/* Groups Rendering logic */}
       {localTrip.groups.map(group => {
         const groupItems = localTrip.items.filter(i => i.tripGroupId === group.id);
         if (groupItems.length === 0) return null;
+        const isCollapsed = collapsedGroups.has(group.id);
+        
         return (
-            <div key={group.id} className="space-y-3">
-            <h3 className="font-bold text-slate-700 dark:text-slate-300 text-lg flex items-center gap-2 border-l-4 border-blue-500 pl-3"><Layers size={18} className="text-blue-500"/>{group.name}</h3>
-            <div className="grid grid-cols-1 gap-3">
-                {groupItems.map(item => {
-                    const info = getCategoryInfo(item.category);
-                    return (
-                    <div key={item.id} onClick={() => toggleCheck(item.id)} className={`relative cursor-pointer transition-all duration-200 p-4 rounded-xl border-2 shadow-sm flex items-start gap-4 ${item.checked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md'}`}>
-                        <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors mt-1 ${item.checked ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500'}`}>
-                        <CheckCircle2 size={20} className={item.checked ? 'opacity-100' : 'opacity-0'} />
-                        {!item.checked && <Circle size={20} className="absolute" />}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                            <div className="flex justify-between items-start mb-1">
-                                <div className="flex flex-col">
-                                    <span className={`text-lg font-bold break-words ${item.checked ? 'text-slate-500 dark:text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200'}`}>{item.name}</span>
-                                    <span className={`text-[10px] w-fit px-1.5 py-0.5 rounded border mt-1 ${info.color}`}>{info.name}</span>
-                                </div>
-                                <span className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold px-2 py-1 rounded text-sm whitespace-nowrap ml-2">x{item.qty}</span>
-                            </div>
-                            {item.version && <div className={`text-sm mt-2 font-medium px-3 py-2 rounded w-full whitespace-pre-wrap break-words leading-relaxed ${item.checked ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500' : 'bg-yellow-50 dark:bg-yellow-900/10 text-yellow-800 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800'}`}>{item.version}</div>}
-                        </div>
-                    </div>
-                )})}
+            <div key={group.id} className="space-y-3 bg-white dark:bg-slate-800/50 rounded-xl border border-transparent dark:border-slate-800">
+            <div 
+                onClick={() => toggleGroupCollapse(group.id)} 
+                className="flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800 p-2 rounded-lg transition-colors group select-none"
+            >
+                <h3 className="font-bold text-slate-700 dark:text-slate-300 text-lg flex items-center gap-2 border-l-4 border-blue-500 pl-3">
+                    <Layers size={18} className="text-blue-500"/>
+                    {group.name}
+                    <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
+                        {groupItems.filter(i => i.checked).length}/{groupItems.length}
+                    </span>
+                </h3>
+                <div className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-colors">
+                    {isCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
+                </div>
             </div>
+            
+            {!isCollapsed && (
+                <div className="grid grid-cols-1 gap-3 px-2 pb-2 animate-in slide-in-from-top-2 duration-200">
+                    {groupItems.map(item => {
+                        const info = getCategoryInfo(item.category);
+                        return (
+                        <div key={item.id} onClick={() => toggleCheck(item.id)} className={`relative cursor-pointer transition-all duration-200 p-4 rounded-xl border-2 shadow-sm flex items-start gap-4 ${item.checked ? 'bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800 opacity-70' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-blue-400 dark:hover:border-blue-500 hover:shadow-md'}`}>
+                            <div className={`flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center transition-colors mt-1 ${item.checked ? 'bg-green-500 text-white' : 'bg-slate-100 dark:bg-slate-700 text-slate-300 dark:text-slate-500'}`}>
+                            <CheckCircle2 size={20} className={item.checked ? 'opacity-100' : 'opacity-0'} />
+                            {!item.checked && <Circle size={20} className="absolute" />}
+                            </div>
+                            <div className="flex-1 min-w-0">
+                                <div className="flex justify-between items-start mb-1">
+                                    <div className="flex flex-col">
+                                        <span className={`text-lg font-bold break-words ${item.checked ? 'text-slate-500 dark:text-slate-500 line-through' : 'text-slate-800 dark:text-slate-200'}`}>{item.name}</span>
+                                        <span className={`text-[10px] w-fit px-1.5 py-0.5 rounded border mt-1 ${info.color}`}>{info.name}</span>
+                                    </div>
+                                    <span className="bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold px-2 py-1 rounded text-sm whitespace-nowrap ml-2">x{item.qty}</span>
+                                </div>
+                                {item.version && <div className={`text-sm mt-2 font-medium px-3 py-2 rounded w-full whitespace-pre-wrap break-words leading-relaxed ${item.checked ? 'bg-slate-100 dark:bg-slate-700 text-slate-400 dark:text-slate-500' : 'bg-yellow-50 dark:bg-yellow-900/10 text-yellow-800 dark:text-yellow-200 border border-yellow-200 dark:border-yellow-800'}`}>{item.version}</div>}
+                            </div>
+                        </div>
+                    )})}
+                </div>
+            )}
             </div>
         );
       })}

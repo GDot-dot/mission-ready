@@ -2,7 +2,7 @@
 import React, { useState } from 'react';
 import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory, InventoryBundle } from '../types';
 import { DEFAULT_TRIP_GROUP_ID } from '../constants';
-import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X, GripVertical, Package } from 'lucide-react';
+import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X, GripVertical, Package, Edit2, Check } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
@@ -18,7 +18,8 @@ interface TripEditorProps {
   onCancel: () => void;
 }
 
-const SortableTripItem = ({ item, info, updateItem, handleRemoveItem }: { item: TripItem, info: any, updateItem: any, handleRemoveItem: any }) => {
+// Fix: Use React.FC to properly handle the 'key' prop and other standard attributes in TypeScript
+const SortableTripItem: React.FC<{ item: TripItem; info: any; updateItem: (itemId: string, field: keyof TripItem, value: any) => void; handleRemoveItem: (itemId: string) => void }> = ({ item, info, updateItem, handleRemoveItem }) => {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: item.id });
   const style = { transform: CSS.Transform.toString(transform), transition, zIndex: isDragging ? 50 : 'auto', opacity: isDragging ? 0.5 : 1, touchAction: 'none' };
 
@@ -55,6 +56,11 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const [activeTripGroupId, setActiveTripGroupId] = useState<string>(tripGroups[0].id);
   const [newTripGroupName, setNewTripGroupName] = useState('');
   const [isAddingGroup, setIsAddingGroup] = useState(false);
+  
+  // Group Renaming State
+  const [editingGroupId, setEditingGroupId] = useState<string | null>(null);
+  const [editingGroupName, setEditingGroupName] = useState('');
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   const [filterFolder, setFilterFolder] = useState<string>('ALL');
@@ -130,6 +136,20 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
         setTripItems(prev => prev.filter(i => i.tripGroupId !== groupId));
         if(activeTripGroupId === groupId) setActiveTripGroupId(tripGroups[0].id);
     }
+  };
+
+  const startEditingGroup = (e: React.MouseEvent, group: TripGroup) => {
+      e.stopPropagation();
+      setEditingGroupId(group.id);
+      setEditingGroupName(group.name);
+  };
+
+  const saveEditingGroup = () => {
+      if (editingGroupId && editingGroupName.trim()) {
+          setTripGroups(prev => prev.map(g => g.id === editingGroupId ? { ...g, name: editingGroupName.trim() } : g));
+      }
+      setEditingGroupId(null);
+      setEditingGroupName('');
   };
 
   const handleSave = () => {
@@ -253,8 +273,32 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
           <div className="p-2 border-b border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 flex overflow-x-auto gap-2 scrollbar-hide items-center">
              {tripGroups.map(group => (
                  <div key={group.id} onClick={() => setActiveTripGroupId(group.id)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg cursor-pointer transition-all whitespace-nowrap border ${activeTripGroupId === group.id ? 'bg-white dark:bg-slate-800 border-blue-200 dark:border-blue-500/50 text-blue-700 dark:text-blue-400 shadow-sm font-medium' : 'bg-slate-100 dark:bg-slate-800 border-transparent text-slate-500 hover:bg-white hover:border-slate-200'}`}>
-                    <span>{group.name}</span><span className="text-xs bg-opacity-20 bg-slate-500 px-1.5 rounded-full">{tripItems.filter(i => i.tripGroupId === group.id).length}</span>
-                    {activeTripGroupId === group.id && <button onClick={(e) => handleDeleteTripGroup(e, group.id)} className="ml-1 p-0.5 hover:text-red-500 rounded hover:bg-red-50"><X size={12} /></button>}
+                    {editingGroupId === group.id ? (
+                        <div className="flex items-center gap-1">
+                            <input 
+                                autoFocus
+                                className="w-20 text-sm px-1 py-0.5 outline-none bg-white dark:bg-slate-900 border border-blue-300 rounded"
+                                value={editingGroupName}
+                                onChange={e => setEditingGroupName(e.target.value)}
+                                onKeyDown={e => e.key === 'Enter' && saveEditingGroup()}
+                                onBlur={saveEditingGroup}
+                                onClick={e => e.stopPropagation()}
+                            />
+                            <button onClick={(e) => { e.stopPropagation(); saveEditingGroup(); }} className="text-green-600 hover:bg-green-50 p-0.5 rounded"><Check size={12}/></button>
+                        </div>
+                    ) : (
+                        <>
+                            <span onDoubleClick={(e) => startEditingGroup(e, group)}>{group.name}</span>
+                            <span className="text-xs bg-opacity-20 bg-slate-500 px-1.5 rounded-full">{tripItems.filter(i => i.tripGroupId === group.id).length}</span>
+                        </>
+                    )}
+                    
+                    {activeTripGroupId === group.id && !editingGroupId && (
+                        <div className="flex items-center gap-1 ml-1 border-l pl-1 border-slate-200 dark:border-slate-700">
+                             <button onClick={(e) => startEditingGroup(e, group)} className="p-0.5 hover:text-blue-500 rounded hover:bg-blue-50" title="重新命名"><Edit2 size={12} /></button>
+                             <button onClick={(e) => handleDeleteTripGroup(e, group.id)} className="p-0.5 hover:text-red-500 rounded hover:bg-red-50" title="刪除群組"><X size={12} /></button>
+                        </div>
+                    )}
                  </div>
              ))}
              {isAddingGroup ? (

@@ -89,12 +89,10 @@ export const cloudSync = {
       });
 
       // 2. Sync Trips to 'trips' collection
-      // KEY UPDATE: Explicitly force update for ANY trip the user has access to
+      // KEY UPDATE: Upload BOTH owned trips AND shared trips that this user has modified
       for (const trip of trips) {
-          // If I am the owner OR I am in the shared list, I have the right to update the cloud doc
-          // This ensures the latest version (e.g. checked items) is always pushed
+          // If I am the owner OR I am in the sharedWith list
           if (trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId))) {
-              console.log(`Syncing trip ${trip.id} to cloud...`);
               await setDoc(doc(db, "trips", trip.id), trip);
           }
       }
@@ -132,15 +130,12 @@ export const cloudSync = {
       ];
 
       // 3. Smart Merge Logic
-      // Priority: Cloud > Local (for synchronization)
-      // But we must preserve local trips that haven't been uploaded yet
       const cloudTripMap = new Map(cloudTrips.map((t: any) => [t.id, t]));
       const mergedTrips = [...cloudTrips];
 
+      // Keep local unsynced trips (that are ONLY local, not on cloud yet)
       currentLocalTrips.forEach(localTrip => {
-          // If a local trip is NOT in the cloud map, it means it's a new trip created offline
-          // We should keep it.
-          if (!cloudTripMap.has(localTrip.id)) {
+          if (!cloudTripMap.has(localTrip.id) && localTrip.userId === userId) {
               mergedTrips.push(localTrip);
           }
       });
