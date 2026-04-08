@@ -1,4 +1,4 @@
-import { InventoryItem, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle } from './types';
+import { InventoryItem, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, ShoppingCategory } from './types';
 
 // Helper to generate IDs
 const uid = () => Math.random().toString(36).substring(2, 9);
@@ -6,6 +6,7 @@ const uid = () => Math.random().toString(36).substring(2, 9);
 export const DEFAULT_FOLDER_ID = 'folder_default';
 export const DEFAULT_GROUP_ID = 'group_default';
 export const DEFAULT_TRIP_GROUP_ID = 'trip_group_default';
+export const DEFAULT_SHOPPING_GROUP_ID = 'shopping_group_default';
 
 // New: Color Palette for User Selection
 export const CATEGORY_PALETTE = [
@@ -98,4 +99,12 @@ export const INITIAL_BUNDLES: InventoryBundle[] = [
             { inventoryId: 'item_stlink', qty: 1 }
         ]
     }
+];
+
+export const INITIAL_SHOPPING_CATEGORIES: ShoppingCategory[] = [
+  { id: 'scat_electronics', name: '電子產品', color: 'bg-blue-50 text-blue-700 border-blue-200' },
+  { id: 'scat_clothing', name: '衣物鞋包', color: 'bg-pink-50 text-pink-700 border-pink-200' },
+  { id: 'scat_food', name: '食品伴手禮', color: 'bg-amber-50 text-amber-700 border-amber-200' },
+  { id: 'scat_cosmetics', name: '藥妝保養', color: 'bg-emerald-50 text-emerald-700 border-emerald-200' },
+  { id: 'scat_others', name: '其他雜項', color: 'bg-slate-50 text-slate-700 border-slate-200' }
 ];

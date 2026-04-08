@@ -96,6 +96,16 @@ export const cloudSync = {
               await setDoc(doc(db, "trips", trip.id), trip);
           }
       }
+      
+      // 3. Sync Shopping Lists to 'shopping_lists' collection
+      if (data.shoppingLists) {
+          for (const list of data.shoppingLists) {
+              if (list.userId === userId) {
+                  await setDoc(doc(db, "shopping_lists", list.id), list);
+              }
+          }
+      }
+      
       return { success: true };
     } catch (error) {
       console.error("Upload failed:", error);
@@ -103,7 +113,7 @@ export const cloudSync = {
     }
   },
 
-  download: async (userId: string, currentLocalTrips: any[] = []) => {
+  download: async (userId: string, currentLocalTrips: any[] = [], currentLocalShoppingLists: any[] = []) => {
     try {
       // 1. Get personal settings
       const docRef = doc(db, "users", userId);
@@ -119,15 +129,22 @@ export const cloudSync = {
       const ownedQuery = query(tripsRef, where("userId", "==", userId));
       const sharedQuery = query(tripsRef, where("sharedWith", "array-contains", userId));
       
-      const [ownedDocs, sharedDocs] = await Promise.all([
+      // 3. Fetch Shopping Lists
+      const shoppingRef = collection(db, "shopping_lists");
+      const shoppingQuery = query(shoppingRef, where("userId", "==", userId));
+
+      const [ownedDocs, sharedDocs, shoppingDocs] = await Promise.all([
           getDocs(ownedQuery),
-          getDocs(sharedQuery)
+          getDocs(sharedQuery),
+          getDocs(shoppingQuery)
       ]);
 
       const cloudTrips = [
           ...ownedDocs.docs.map(d => d.data()),
           ...sharedDocs.docs.map(d => d.data())
       ];
+      
+      const cloudShoppingLists = shoppingDocs.docs.map(d => d.data());
 
       // 3. Smart Merge Logic
       const cloudTripMap = new Map(cloudTrips.map((t: any) => [t.id, t]));
@@ -141,6 +158,17 @@ export const cloudSync = {
       });
 
       userData.trips = mergedTrips;
+      
+      const cloudShoppingMap = new Map(cloudShoppingLists.map((l: any) => [l.id, l]));
+      const mergedShoppingLists = [...cloudShoppingLists];
+      
+      currentLocalShoppingLists.forEach(localList => {
+          if (!cloudShoppingMap.has(localList.id) && localList.userId === userId) {
+              mergedShoppingLists.push(localList);
+          }
+      });
+      
+      userData.shoppingLists = mergedShoppingLists;
 
       return { success: true, data: userData };
     } catch (error) {

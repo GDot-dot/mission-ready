@@ -3,9 +3,12 @@ import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
 import { TripRunner } from './components/TripRunner';
 import { Auth } from './components/Auth';
-import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID } from './constants';
-import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle } from './types';
-import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle } from 'lucide-react';
+import { ShoppingDashboard } from './components/ShoppingDashboard';
+import { ShoppingListEditor } from './components/ShoppingListEditor';
+import { CurrencyConverter } from './components/CurrencyConverter';
+import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, INITIAL_SHOPPING_CATEGORIES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID, DEFAULT_SHOPPING_GROUP_ID } from './constants';
+import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, ShoppingList, ShoppingCategory } from './types';
+import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle, ShoppingCart, DollarSign } from 'lucide-react';
 import { cloudSync } from './firebaseConfig';
 
 export default function App() {
@@ -18,7 +21,10 @@ export default function App() {
   const [groups, setGroups] = useState<InventoryGroup[]>([]);
   const [categories, setCategories] = useState<InventoryCategory[]>([]);
   const [bundles, setBundles] = useState<InventoryBundle[]>([]);
+  const [shoppingLists, setShoppingLists] = useState<ShoppingList[]>([]);
+  const [shoppingCategories, setShoppingCategories] = useState<ShoppingCategory[]>([]);
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
+  const [activeShoppingListId, setActiveShoppingListId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
@@ -93,6 +99,12 @@ export default function App() {
     const savedBundles = localStorage.getItem(`mission_ready_bundles_${userId}`);
     setBundles(savedBundles ? JSON.parse(savedBundles) : INITIAL_BUNDLES);
 
+    const savedShoppingLists = localStorage.getItem(`mission_ready_shopping_lists_${userId}`);
+    setShoppingLists(savedShoppingLists ? JSON.parse(savedShoppingLists) : []);
+
+    const savedShoppingCats = localStorage.getItem(`mission_ready_shopping_cats_${userId}`);
+    setShoppingCategories(savedShoppingCats ? JSON.parse(savedShoppingCats) : INITIAL_SHOPPING_CATEGORIES);
+
     const savedInventory = localStorage.getItem(`mission_ready_inventory_${userId}`);
     let loadedInventory: InventoryItem[] = [];
     
@@ -152,6 +164,8 @@ export default function App() {
   useEffect(() => persistAndMarkDirty(`mission_ready_groups_${user?.id}`, groups), [groups, user]);
   useEffect(() => persistAndMarkDirty(`mission_ready_categories_${user?.id}`, categories), [categories, user]);
   useEffect(() => persistAndMarkDirty(`mission_ready_bundles_${user?.id}`, bundles), [bundles, user]);
+  useEffect(() => persistAndMarkDirty(`mission_ready_shopping_lists_${user?.id}`, shoppingLists), [shoppingLists, user]);
+  useEffect(() => persistAndMarkDirty(`mission_ready_shopping_cats_${user?.id}`, shoppingCategories), [shoppingCategories, user]);
 
   // --- Handlers ---
   const handleLogin = (loggedInUser: User) => {
@@ -171,6 +185,8 @@ export default function App() {
     setGroups([]);
     setCategories([]);
     setBundles([]);
+    setShoppingLists([]);
+    setShoppingCategories([]);
     setHasUnsavedChanges(false);
   };
 
@@ -229,7 +245,7 @@ export default function App() {
   const handleCloudUpload = async () => {
     if (!user) return;
     setIsSyncing(true);
-    const data = { inventory, trips, folders, groups, categories, bundles };
+    const data = { inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories };
     try {
         const result = await cloudSync.upload(user.id, data);
         if (result.success) {
@@ -245,15 +261,17 @@ export default function App() {
     if (!window.confirm("⚠️ 警告：這將會用雲端的資料「覆蓋」您目前電腦上的所有資料。\n\n確定要繼續嗎？")) return;
     setIsSyncing(true);
     try {
-        const result = await cloudSync.download(user.id, trips);
+        const result = await cloudSync.download(user.id, trips, shoppingLists);
         if (result.success && result.data) {
-            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats, bundles: newBundles } = result.data;
+            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats, bundles: newBundles, shoppingLists: newShoppingLists, shoppingCategories: newShoppingCats } = result.data;
             if(newCats) setCategories(newCats);
             if(newBundles) setBundles(newBundles);
             if(newInv) setInventory(newInv);
             if(newTrips) setTrips(newTrips);
             if(newFolders) setFolders(newFolders);
             if(newGroups) setGroups(newGroups);
+            if(newShoppingLists) setShoppingLists(newShoppingLists);
+            if(newShoppingCats) setShoppingCategories(newShoppingCats);
             alert('✅ 資料同步完成！');
             setHasUnsavedChanges(false);
         } else { alert('❌ 下載失敗，找不到資料'); }
@@ -265,6 +283,7 @@ export default function App() {
   if (!user) return <Auth onLogin={handleLogin} />;
 
   const activeTrip = trips.find(t => t.id === activeTripId) || null;
+  const activeShoppingList = shoppingLists.find(l => l.id === activeShoppingListId) || null;
 
   // Global Search Logic
   const searchResultsItems = inventory.filter(i => i.name.toLowerCase().includes(globalSearch.toLowerCase()));
@@ -285,6 +304,8 @@ export default function App() {
                 <div className="flex gap-1">
                     <button onClick={() => setView('DASHBOARD')} className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'DASHBOARD' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>儀表板</button>
                     <button onClick={() => setView('INVENTORY')} className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'INVENTORY' ? 'text-blue-600 bg-blue-50 dark:bg-blue-900/30 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>物品庫</button>
+                    <button onClick={() => setView('SHOPPING_DASHBOARD')} className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'SHOPPING_DASHBOARD' || view === 'SHOPPING_LIST' ? 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/30 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>採購</button>
+                    <button onClick={() => setView('CURRENCY_CONVERTER')} className={`px-3 md:px-4 py-2 rounded-lg text-sm font-medium transition-colors ${view === 'CURRENCY_CONVERTER' ? 'text-indigo-600 bg-indigo-50 dark:bg-indigo-900/30 dark:text-indigo-400' : 'text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800'}`}>匯率</button>
                 </div>
                 
                 <div className="h-6 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
@@ -436,6 +457,63 @@ export default function App() {
         {view === 'INVENTORY' && <div className="animate-in fade-in slide-in-from-bottom-4 duration-300"><Inventory items={inventory} setItems={setInventory} folders={folders} setFolders={setFolders} groups={groups} setGroups={setGroups} categories={categories} setCategories={setCategories} bundles={bundles} setBundles={setBundles} /></div>}
         {view === 'TRIP_EDIT' && <div className="animate-in fade-in zoom-in-95 duration-200"><TripEditor inventory={inventory} folders={folders} groups={groups} categories={categories} bundles={bundles} currentTrip={activeTrip} onSave={handleSaveTrip} onCancel={() => setView(activeTripId ? 'TRIP_RUN' : 'DASHBOARD')} /></div>}
         {view === 'TRIP_RUN' && activeTrip && <div className="animate-in fade-in slide-in-from-right-4 duration-300"><TripRunner trip={activeTrip} categories={categories} onUpdateTrip={handleSaveTrip} onBack={() => setView('DASHBOARD')} onEdit={() => setView('TRIP_EDIT')} /></div>}
+        
+        {view === 'SHOPPING_DASHBOARD' && (
+            <ShoppingDashboard 
+                lists={shoppingLists} 
+                categories={shoppingCategories}
+                onCreateList={() => {
+                    const newList: ShoppingList = {
+                        id: Math.random().toString(36).substring(2, 9),
+                        userId: user.id,
+                        name: '新採購清單',
+                        date: new Date().toISOString().split('T')[0],
+                        budget: 0,
+                        items: [],
+                        groups: [{ id: DEFAULT_SHOPPING_GROUP_ID, name: '主要清單' }]
+                    };
+                    setShoppingLists(prev => [newList, ...prev]);
+                    setActiveShoppingListId(newList.id);
+                    setView('SHOPPING_LIST');
+                }}
+                onOpenList={(id) => { setActiveShoppingListId(id); setView('SHOPPING_LIST'); }}
+                onDeleteList={(id) => {
+                    if(window.confirm("確定要刪除這個採購清單嗎？")) {
+                        setShoppingLists(prev => prev.filter(l => l.id !== id));
+                    }
+                }}
+                onDuplicateList={(list) => {
+                    if(window.confirm(`確定要複製清單「${list.name}」嗎？`)) {
+                        const newList: ShoppingList = {
+                            ...list,
+                            id: Math.random().toString(36).substring(2, 9),
+                            name: `${list.name} (Copy)`,
+                            date: new Date().toISOString().split('T')[0],
+                            items: list.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), status: 'to_buy' }))
+                        };
+                        setShoppingLists(prev => [newList, ...prev]);
+                    }
+                }}
+                onUpdateCategories={setShoppingCategories}
+            />
+        )}
+        {view === 'SHOPPING_LIST' && activeShoppingList && (
+            <div className="animate-in fade-in slide-in-from-right-4 duration-300">
+                <ShoppingListEditor 
+                    list={activeShoppingList} 
+                    categories={shoppingCategories}
+                    onSave={(updatedList) => {
+                        setShoppingLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
+                    }}
+                    onBack={() => setView('SHOPPING_DASHBOARD')}
+                />
+            </div>
+        )}
+        {view === 'CURRENCY_CONVERTER' && (
+            <div className="animate-in fade-in slide-in-from-bottom-4 duration-300">
+                <CurrencyConverter onBack={() => setView('DASHBOARD')} />
+            </div>
+        )}
       </main>
     </div>
   );

@@ -71,4 +71,33 @@ export interface Trip {
   items: TripItem[];
 }
 
-export type ViewState = 'DASHBOARD' | 'INVENTORY' | 'TRIP_EDIT' | 'TRIP_RUN';
+export type ViewState = 'DASHBOARD' | 'INVENTORY' | 'TRIP_EDIT' | 'TRIP_RUN' | 'SHOPPING_DASHBOARD' | 'SHOPPING_LIST' | 'CURRENCY_CONVERTER';
+
+export type ShoppingItemStatus = 'to_buy' | 'bought' | 'dropped';
+
+export interface ShoppingCategory {
+  id: string;
+  name: string;
+  color: string;
+}
+
+export interface ShoppingItem {
+  id: string;
+  name: string;
+  price: number;
+  qty: number;
+  status: ShoppingItemStatus;
+  categoryId: string;
+  source?: string;
+  groupId?: string;
+}
+
+export interface ShoppingList {
+  id: string;
+  userId: string;
+  name: string;
+  date: string;
+  budget?: number;
+  items: ShoppingItem[];
+  groups: { id: string; name: string }[];
+}
