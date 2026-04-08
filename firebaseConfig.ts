@@ -100,7 +100,7 @@ export const cloudSync = {
       // 3. Sync Shopping Lists to 'shopping_lists' collection
       if (data.shoppingLists) {
           for (const list of data.shoppingLists) {
-              if (list.userId === userId) {
+              if (list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId))) {
                   await setDoc(doc(db, "shopping_lists", list.id), list);
               }
           }
@@ -132,11 +132,13 @@ export const cloudSync = {
       // 3. Fetch Shopping Lists
       const shoppingRef = collection(db, "shopping_lists");
       const shoppingQuery = query(shoppingRef, where("userId", "==", userId));
+      const sharedShoppingQuery = query(shoppingRef, where("sharedWith", "array-contains", userId));
 
-      const [ownedDocs, sharedDocs, shoppingDocs] = await Promise.all([
+      const [ownedDocs, sharedDocs, shoppingDocs, sharedShoppingDocs] = await Promise.all([
           getDocs(ownedQuery),
           getDocs(sharedQuery),
-          getDocs(shoppingQuery)
+          getDocs(shoppingQuery),
+          getDocs(sharedShoppingQuery)
       ]);
 
       const cloudTrips = [
@@ -144,7 +146,10 @@ export const cloudSync = {
           ...sharedDocs.docs.map(d => d.data())
       ];
       
-      const cloudShoppingLists = shoppingDocs.docs.map(d => d.data());
+      const cloudShoppingLists = [
+          ...shoppingDocs.docs.map(d => d.data()),
+          ...sharedShoppingDocs.docs.map(d => d.data())
+      ];
 
       // 3. Smart Merge Logic
       const cloudTripMap = new Map(cloudTrips.map((t: any) => [t.id, t]));
@@ -198,6 +203,36 @@ export const cloudSync = {
       try {
           const tripRef = doc(db, "trips", tripId);
           await updateDoc(tripRef, {
+              sharedWith: arrayRemove(targetUserId)
+          });
+          return { success: true };
+      } catch (error) {
+          console.error("Unshare failed:", error);
+          return { success: false, error: "取消分享失敗" };
+      }
+  },
+
+  shareShoppingList: async (listId: string, targetUsername: string) => {
+      try {
+          const userResult = await cloudAuth.findUserByUsername(targetUsername);
+          if (!userResult.success || !userResult.userId) return { success: false, error: "找不到該使用者" };
+
+          const listRef = doc(db, "shopping_lists", listId);
+          await updateDoc(listRef, {
+              sharedWith: arrayUnion(userResult.userId)
+          });
+          
+          return { success: true, userId: userResult.userId };
+      } catch (error) {
+          console.error("Share failed:", error);
+          return { success: false, error: "分享失敗，請確認網路或權限" };
+      }
+  },
+
+  unshareShoppingList: async (listId: string, targetUserId: string) => {
+      try {
+          const listRef = doc(db, "shopping_lists", listId);
+          await updateDoc(listRef, {
               sharedWith: arrayRemove(targetUserId)
           });
           return { success: true };

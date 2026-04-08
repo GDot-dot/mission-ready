@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { ShoppingList, ShoppingCategory } from '../types';
-import { Plus, ShoppingCart, Copy, X, ChevronRight, Settings, Tag } from 'lucide-react';
+import { Plus, ShoppingCart, Copy, X, ChevronRight, Settings, Tag, Check } from 'lucide-react';
 import { CATEGORY_PALETTE } from '../constants';
 
 interface ShoppingDashboardProps {
@@ -121,19 +121,35 @@ export const ShoppingDashboard: React.FC<ShoppingDashboardProps> = ({ lists, cat
               {localCategories.map(cat => (
                 <div key={cat.id} className="flex items-center gap-2 bg-slate-50 dark:bg-slate-900/50 p-2 rounded-lg border border-slate-200 dark:border-slate-700">
                   <input 
-                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1 text-sm focus:outline-none focus:border-emerald-500 text-slate-800 dark:text-slate-200"
+                    className="flex-1 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded px-2 py-1.5 text-sm focus:outline-none focus:border-emerald-500 text-slate-800 dark:text-slate-200"
                     value={cat.name}
                     onChange={e => handleUpdateCategory(cat.id, { name: e.target.value })}
+                    placeholder="分類名稱"
                   />
                   <select 
-                    className={`text-xs rounded px-2 py-1 border-none focus:ring-0 cursor-pointer ${cat.color}`}
-                    value={cat.color}
-                    onChange={e => handleUpdateCategory(cat.id, { color: e.target.value })}
+                    className={`text-xs rounded px-2 py-1.5 border border-slate-200 dark:border-slate-600 focus:outline-none focus:border-emerald-500 cursor-pointer ${!cat.color.startsWith('#') ? cat.color : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200'}`}
+                    value={cat.color.startsWith('#') ? 'custom' : cat.color}
+                    onChange={e => {
+                      if (e.target.value === 'custom') {
+                        handleUpdateCategory(cat.id, { color: '#10b981' });
+                      } else {
+                        handleUpdateCategory(cat.id, { color: e.target.value });
+                      }
+                    }}
                   >
                     {CATEGORY_PALETTE.map(p => <option key={p.class} value={p.class} className={p.class}>{p.name}</option>)}
+                    <option value="custom" className="bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200">自訂顏色...</option>
                   </select>
+                  {cat.color.startsWith('#') && (
+                    <input 
+                      type="color" 
+                      value={cat.color} 
+                      onChange={e => handleUpdateCategory(cat.id, { color: e.target.value })}
+                      className="w-8 h-8 p-0 border-0 rounded cursor-pointer shrink-0"
+                    />
+                  )}
                   <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors">
-                    <X size={16} />
+                    <X size={18} />
                   </button>
                 </div>
               ))}

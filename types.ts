@@ -100,4 +100,5 @@ export interface ShoppingList {
   budget?: number;
   items: ShoppingItem[];
   groups: { id: string; name: string }[];
+  sharedWith?: string[];
 }
