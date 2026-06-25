@@ -1,5 +1,5 @@
 import firebase from "firebase/compat/app";
-import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove, writeBatch } from "firebase/firestore";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,6 +15,38 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = firebase.initializeApp(firebaseConfig);
 const db = getFirestore(app as any);
+
+const CLOUD_SCHEMA_VERSION = 2;
+const FIRESTORE_BATCH_LIMIT = 450;
+
+const safeParseCloudData = (rawData: unknown) => {
+  if (!rawData || typeof rawData !== "string") return {};
+
+  try {
+    return JSON.parse(rawData);
+  } catch (error) {
+    console.warn("Unable to parse legacy cloud data:", error);
+    return {};
+  }
+};
+
+const getUserSettingsFromDoc = (snapshotData: any) => {
+  if (!snapshotData) return {};
+
+  if (snapshotData.settings && typeof snapshotData.settings === "object") {
+    return snapshotData.settings;
+  }
+
+  return safeParseCloudData(snapshotData.data);
+};
+
+const commitBatches = async (writes: Array<(batch: ReturnType<typeof writeBatch>) => void>) => {
+  for (let i = 0; i < writes.length; i += FIRESTORE_BATCH_LIMIT) {
+    const batch = writeBatch(db);
+    writes.slice(i, i + FIRESTORE_BATCH_LIMIT).forEach(write => write(batch));
+    await batch.commit();
+  }
+};
 
 export const cloudAuth = {
   register: async (username: string, password: string) => {
@@ -68,43 +100,57 @@ export const cloudAuth = {
 export const cloudSync = {
   upload: async (userId: string, data: any) => {
     try {
-      const { trips, ...settingsData } = data;
+      const { trips = [], shoppingLists = [], ...settingsData } = data;
+      const now = new Date().toISOString();
+      const ownedTripIds = trips.filter((trip: any) => trip.userId === userId).map((trip: any) => trip.id);
+      const ownedShoppingListIds = shoppingLists.filter((list: any) => list.userId === userId).map((list: any) => list.id);
       
       // Safety check: Prevent uploading empty inventory over existing data
       if (!settingsData.inventory || settingsData.inventory.length === 0) {
           const docRef = doc(db, "users", userId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
-              const cloudData = JSON.parse(docSnap.data().data);
+              const cloudData = getUserSettingsFromDoc(docSnap.data());
               if (cloudData.inventory && cloudData.inventory.length > 0) {
                   return { success: false, error: "本地物品庫為空，為防止誤刪，已取消上傳。請先執行下載。" };
               }
           }
       }
 
-      // 1. Save user settings (inventory, folders, etc.)
-      await setDoc(doc(db, "users", userId), {
-        lastUpdated: new Date().toISOString(),
-        data: JSON.stringify(settingsData)
-      });
+      const writes: Array<(batch: ReturnType<typeof writeBatch>) => void> = [
+        batch => batch.set(doc(db, "users", userId), {
+          schemaVersion: CLOUD_SCHEMA_VERSION,
+          lastUpdated: now,
+          settings: settingsData,
+          ownedTripIds,
+          ownedShoppingListIds,
+          data: JSON.stringify(settingsData)
+        })
+      ];
 
       // 2. Sync Trips to 'trips' collection
       // KEY UPDATE: Upload BOTH owned trips AND shared trips that this user has modified
       for (const trip of trips) {
           // If I am the owner OR I am in the sharedWith list
           if (trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId))) {
-              await setDoc(doc(db, "trips", trip.id), trip);
+              writes.push(batch => batch.set(doc(db, "trips", trip.id), {
+                ...trip,
+                updatedAt: now
+              }));
           }
       }
       
       // 3. Sync Shopping Lists to 'shopping_lists' collection
-      if (data.shoppingLists) {
-          for (const list of data.shoppingLists) {
-              if (list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId))) {
-                  await setDoc(doc(db, "shopping_lists", list.id), list);
-              }
+      for (const list of shoppingLists) {
+          if (list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId))) {
+              writes.push(batch => batch.set(doc(db, "shopping_lists", list.id), {
+                ...list,
+                updatedAt: now
+              }));
           }
       }
+
+      await commitBatches(writes);
       
       return { success: true };
     } catch (error) {
@@ -119,9 +165,12 @@ export const cloudSync = {
       const docRef = doc(db, "users", userId);
       const docSnap = await getDoc(docRef);
       let userData: any = {};
+      let cloudManifest: any = {};
       
       if (docSnap.exists()) {
-        userData = JSON.parse(docSnap.data().data);
+        const snapshotData = docSnap.data();
+        userData = getUserSettingsFromDoc(snapshotData);
+        cloudManifest = snapshotData;
       }
 
       // 2. Fetch Cloud Trips (Owned + Shared)
@@ -141,13 +190,23 @@ export const cloudSync = {
           getDocs(sharedShoppingQuery)
       ]);
 
+      const manifestTripIds = Array.isArray(cloudManifest.ownedTripIds) ? new Set(cloudManifest.ownedTripIds) : null;
+      const manifestShoppingListIds = Array.isArray(cloudManifest.ownedShoppingListIds) ? new Set(cloudManifest.ownedShoppingListIds) : null;
+
+      const ownedTrips = ownedDocs.docs
+          .map(d => d.data())
+          .filter((trip: any) => !manifestTripIds || manifestTripIds.has(trip.id));
+      const ownedShoppingLists = shoppingDocs.docs
+          .map(d => d.data())
+          .filter((list: any) => !manifestShoppingListIds || manifestShoppingListIds.has(list.id));
+
       const cloudTrips = [
-          ...ownedDocs.docs.map(d => d.data()),
+          ...ownedTrips,
           ...sharedDocs.docs.map(d => d.data())
       ];
       
       const cloudShoppingLists = [
-          ...shoppingDocs.docs.map(d => d.data()),
+          ...ownedShoppingLists,
           ...sharedShoppingDocs.docs.map(d => d.data())
       ];
 

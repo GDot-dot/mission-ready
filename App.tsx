@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Inventory } from './components/Inventory';
 import { TripEditor } from './components/TripEditor';
 import { TripRunner } from './components/TripRunner';
@@ -10,6 +10,8 @@ import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES,
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, ShoppingList, ShoppingCategory } from './types';
 import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle, ShoppingCart, DollarSign } from 'lucide-react';
 import { cloudSync } from './firebaseConfig';
+
+const AUTO_SYNC_DELAY_MS = 2500;
 
 export default function App() {
   const [user, setUser] = useState<User | null>(null);
@@ -26,12 +28,16 @@ export default function App() {
   const [activeTripId, setActiveTripId] = useState<string | null>(null);
   const [activeShoppingListId, setActiveShoppingListId] = useState<string | null>(null);
   const [isSyncing, setIsSyncing] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<'idle' | 'pending' | 'syncing' | 'synced' | 'error'>('idle');
+  const [syncError, setSyncError] = useState('');
   const [darkMode, setDarkMode] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   
   // New: Unsaved Changes Tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const isFirstLoad = useRef(true);
+  const isApplyingCloudData = useRef(false);
+  const autoSyncTimer = useRef<number | null>(null);
 
   // --- Dark Mode ---
   useEffect(() => {
@@ -65,18 +71,6 @@ export default function App() {
       }
     }
   }, []);
-
-  // --- Auto-Save Reminder ---
-  useEffect(() => {
-      const timer = setInterval(() => {
-          if (user && hasUnsavedChanges) {
-              // Non-intrusive notification logic could go here, for now using console/visual indicator
-              console.log("您有未儲存的變更，建議上傳雲端備份。");
-          }
-      }, 10 * 60 * 1000); // 10 minutes
-
-      return () => clearInterval(timer);
-  }, [user, hasUnsavedChanges]);
 
   // Warn before closing tab if unsaved
   useEffect(() => {
@@ -148,14 +142,24 @@ export default function App() {
     setGroups(savedGroups ? JSON.parse(savedGroups) : INITIAL_GROUPS);
     
     // Reset dirty flag after initial load
-    setTimeout(() => { isFirstLoad.current = false; setHasUnsavedChanges(false); }, 500);
+    setTimeout(() => {
+      isFirstLoad.current = false;
+      isApplyingCloudData.current = false;
+      setHasUnsavedChanges(false);
+      setSyncStatus('idle');
+      setSyncError('');
+    }, 500);
   };
 
   // Persistence Effects - Mark as Dirty on Change
   const persistAndMarkDirty = (key: string, data: any) => {
       if (!user) return;
       localStorage.setItem(key, JSON.stringify(data));
-      if (!isFirstLoad.current) setHasUnsavedChanges(true);
+      if (!isFirstLoad.current && !isApplyingCloudData.current) {
+        setHasUnsavedChanges(true);
+        setSyncStatus('pending');
+        setSyncError('');
+      }
   };
 
   useEffect(() => persistAndMarkDirty(`mission_ready_inventory_${user?.id}`, inventory), [inventory, user]);
@@ -177,6 +181,7 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current);
     setUser(null);
     localStorage.removeItem('mission_ready_active_user_id');
     setInventory([]);
@@ -188,6 +193,8 @@ export default function App() {
     setShoppingLists([]);
     setShoppingCategories([]);
     setHasUnsavedChanges(false);
+    setSyncStatus('idle');
+    setSyncError('');
   };
 
   const handleSaveTrip = (updatedTrip: Trip) => {
@@ -242,18 +249,36 @@ export default function App() {
     }
   };
 
-  const handleCloudUpload = async () => {
-    if (!user) return;
+  const syncToCloud = useCallback(async (options: { showSuccessAlert?: boolean } = {}) => {
+    if (!user || isSyncing) return;
     setIsSyncing(true);
+    setSyncStatus('syncing');
+    setSyncError('');
     const data = { inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories };
     try {
         const result = await cloudSync.upload(user.id, data);
         if (result.success) {
-            alert('✅ 雲端備份成功！');
+            if (options.showSuccessAlert) alert('✅ 雲端備份成功！');
             setHasUnsavedChanges(false); // Reset dirty flag
-        } else alert('❌ 上傳失敗：' + JSON.stringify(result.error));
-    } catch (e) { console.error(e); alert('❌ 上傳發生錯誤'); } 
-    finally { setIsSyncing(false); }
+            setSyncStatus('synced');
+        } else {
+            const message = JSON.stringify(result.error);
+            setSyncStatus('error');
+            setSyncError(message);
+            if (options.showSuccessAlert) alert('❌ 上傳失敗：' + message);
+        }
+    } catch (e) {
+        console.error(e);
+        setSyncStatus('error');
+        setSyncError(e instanceof Error ? e.message : '上傳發生錯誤');
+        if (options.showSuccessAlert) alert('❌ 上傳發生錯誤');
+    } finally {
+        setIsSyncing(false);
+    }
+  }, [user, isSyncing, inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories]);
+
+  const handleCloudUpload = async () => {
+    await syncToCloud({ showSuccessAlert: true });
   };
 
   const handleCloudDownload = async () => {
@@ -263,6 +288,7 @@ export default function App() {
     try {
         const result = await cloudSync.download(user.id, trips, shoppingLists);
         if (result.success && result.data) {
+            isApplyingCloudData.current = true;
             const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats, bundles: newBundles, shoppingLists: newShoppingLists, shoppingCategories: newShoppingCats } = result.data;
             if(newCats) setCategories(newCats);
             if(newBundles) setBundles(newBundles);
@@ -273,11 +299,30 @@ export default function App() {
             if(newShoppingLists) setShoppingLists(newShoppingLists);
             if(newShoppingCats) setShoppingCategories(newShoppingCats);
             alert('✅ 資料同步完成！');
-            setHasUnsavedChanges(false);
+            setTimeout(() => {
+              isApplyingCloudData.current = false;
+              setHasUnsavedChanges(false);
+              setSyncStatus('synced');
+              setSyncError('');
+            }, 0);
         } else { alert('❌ 下載失敗，找不到資料'); }
     } catch (e) { console.error(e); alert('❌ 下載發生錯誤'); } 
     finally { setIsSyncing(false); }
   };
+
+  useEffect(() => {
+      if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current);
+      if (!user || !hasUnsavedChanges || isSyncing || syncStatus === 'error') return;
+
+      setSyncStatus('pending');
+      autoSyncTimer.current = window.setTimeout(() => {
+          syncToCloud();
+      }, AUTO_SYNC_DELAY_MS);
+
+      return () => {
+          if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current);
+      };
+  }, [user, hasUnsavedChanges, isSyncing, syncStatus, syncToCloud]);
 
   // --- Render ---
   if (!user) return <Auth onLogin={handleLogin} />;
@@ -321,7 +366,7 @@ export default function App() {
                         <button 
                             onClick={handleCloudUpload} 
                             className={`p-2 rounded-lg transition-colors relative ${hasUnsavedChanges ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30 ring-1 ring-blue-400' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800'}`}
-                            title={hasUnsavedChanges ? "有未儲存的變更！點擊上傳" : "上傳"}
+                            title={hasUnsavedChanges ? "立即同步" : "上傳"}
                         >
                             <UploadCloud size={20} />
                             {hasUnsavedChanges && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
@@ -340,11 +385,17 @@ export default function App() {
         </div>
       </nav>
 
-      {/* Unsaved Changes Alert Banner */}
-      {hasUnsavedChanges && (
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 text-yellow-800 dark:text-yellow-200 px-4 py-1 text-xs text-center border-b border-yellow-200 dark:border-yellow-800 flex items-center justify-center gap-2">
-              <AlertCircle size={12} />
-              <span>您有尚未同步到雲端的變更，請記得備份。</span>
+      {/* Cloud Sync Status Banner */}
+      {(hasUnsavedChanges || syncStatus === 'syncing' || syncStatus === 'error') && (
+          <div className={`${syncStatus === 'error' ? 'bg-red-50 dark:bg-red-900/20 text-red-800 dark:text-red-200 border-red-200 dark:border-red-800' : 'bg-blue-50 dark:bg-blue-900/20 text-blue-800 dark:text-blue-200 border-blue-200 dark:border-blue-800'} px-4 py-1 text-xs text-center border-b flex items-center justify-center gap-2`}>
+              {syncStatus === 'syncing' ? <Loader2 size={12} className="animate-spin" /> : <AlertCircle size={12} />}
+              <span>
+                {syncStatus === 'error'
+                  ? `自動同步失敗，請檢查網路後按雲端上傳重試${syncError ? `：${syncError}` : ''}`
+                  : syncStatus === 'syncing'
+                    ? '正在自動同步到雲端...'
+                    : '變更已儲存在本機，稍後會自動同步到雲端。'}
+              </span>
           </div>
       )}
 
