@@ -4,6 +4,14 @@ export interface InventoryCategory {
   color: string; // Tailwind classes string
 }
 
+export interface SyncMeta {
+  revision?: number;
+  updatedAt?: string;
+  updatedByClientId?: string;
+  deletedAt?: string | null;
+  deletedByClientId?: string;
+}
+
 export interface User {
   id: string;
   username: string;
@@ -36,11 +44,15 @@ export interface InventoryItem {
 export interface BundleItem {
     inventoryId: string;
     qty: number;
+    qtyMode?: 'fixed' | 'perDay' | 'perDays';
+    daysDivisor?: number;
+    spareQty?: number;
 }
 
 export interface InventoryBundle {
     id: string;
     name: string;
+    type?: string;
     items: BundleItem[];
 }
 // ------------------------------
@@ -66,9 +78,17 @@ export interface Trip {
   userId: string; // Belongs to specific user
   name: string;
   date: string;
+  type?: string;
+  durationDays?: number;
+  baselineBundleId?: string;
   status: 'planning' | 'active' | 'completed';
   groups: TripGroup[]; // List of groups defined for this trip
   items: TripItem[];
+  revision?: number;
+  updatedAt?: string;
+  updatedByClientId?: string;
+  deletedAt?: string | null;
+  deletedByClientId?: string;
 }
 
 export type ViewState = 'DASHBOARD' | 'INVENTORY' | 'TRIP_EDIT' | 'TRIP_RUN' | 'SHOPPING_DASHBOARD' | 'SHOPPING_LIST' | 'CURRENCY_CONVERTER';
@@ -101,4 +121,9 @@ export interface ShoppingList {
   items: ShoppingItem[];
   groups: { id: string; name: string }[];
   sharedWith?: string[];
+  revision?: number;
+  updatedAt?: string;
+  updatedByClientId?: string;
+  deletedAt?: string | null;
+  deletedByClientId?: string;
 }

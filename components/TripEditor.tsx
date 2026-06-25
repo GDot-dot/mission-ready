@@ -1,7 +1,7 @@
 
 import React, { useState } from 'react';
 import { InventoryItem, Trip, TripItem, InventoryFolder, InventoryGroup, TripGroup, InventoryCategory, InventoryBundle } from '../types';
-import { DEFAULT_TRIP_GROUP_ID } from '../constants';
+import { DEFAULT_TRIP_GROUP_ID, TRIP_TYPES } from '../constants';
 import { Search, Plus, Trash2, ArrowLeft, Save, Briefcase, X, GripVertical, Package, Edit2, Check } from 'lucide-react';
 import { DndContext, closestCenter, KeyboardSensor, PointerSensor, useSensor, useSensors, DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, verticalListSortingStrategy, useSortable } from '@dnd-kit/sortable';
@@ -51,6 +51,9 @@ const SortableTripItem: React.FC<{ item: TripItem; info: any; updateItem: (itemI
 export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, groups, categories, bundles, currentTrip, onSave, onCancel }) => {
   const [tripName, setTripName] = useState(currentTrip?.name || `出差行程 ${new Date().toLocaleDateString()}`);
   const [tripDate, setTripDate] = useState(currentTrip?.date || new Date().toISOString().split('T')[0]);
+  const [tripType, setTripType] = useState(currentTrip?.type || '工作');
+  const [durationDays, setDurationDays] = useState(currentTrip?.durationDays || 1);
+  const [baselineBundleId, setBaselineBundleId] = useState(currentTrip?.baselineBundleId || '');
   const [tripItems, setTripItems] = useState<TripItem[]>(currentTrip?.items || []);
   const [tripGroups, setTripGroups] = useState<TripGroup[]>(currentTrip?.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }]);
   const [activeTripGroupId, setActiveTripGroupId] = useState<string>(tripGroups[0].id);
@@ -100,13 +103,19 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
           bundle.items.forEach(bItem => {
               const invItem = inventory.find(i => i.id === bItem.inventoryId);
               if (invItem) {
+                  const daysDivisor = Math.max(1, bItem.daysDivisor || 1);
+                  const baseQty = bItem.qtyMode === 'perDay'
+                    ? bItem.qty * durationDays
+                    : bItem.qtyMode === 'perDays'
+                      ? bItem.qty * Math.ceil(durationDays / daysDivisor)
+                      : bItem.qty;
                   newItems.push({
                     id: Math.random().toString(36).substring(2, 9),
                     inventoryId: invItem.id,
                     tripGroupId: activeTripGroupId,
                     name: invItem.name,
                     category: invItem.category,
-                    qty: bItem.qty,
+                    qty: baseQty + (bItem.spareQty || 0),
                     version: invItem.defaultVersion || '',
                     checked: false
                   });
@@ -160,6 +169,9 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
       userId: currentTrip?.userId || 'unknown',
       name: tripName,
       date: tripDate,
+      type: tripType,
+      durationDays,
+      baselineBundleId: baselineBundleId || undefined,
       status: currentTrip?.status || 'planning',
       groups: tripGroups,
       items: tripItems
@@ -176,6 +188,15 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
   const availableGroups = filterFolder === 'ALL' ? groups : groups.filter(g => g.folderId === filterFolder);
   const activeTripItems = tripItems.filter(item => item.tripGroupId === activeTripGroupId);
   const getCategoryInfo = (catId: string) => { const cat = categories.find(c => c.id === catId); return { name: cat?.name || '未知', color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200' }; };
+  const calculateBundleQty = (bItem: InventoryBundle['items'][number]) => {
+      const daysDivisor = Math.max(1, bItem.daysDivisor || 1);
+      const baseQty = bItem.qtyMode === 'perDay'
+        ? bItem.qty * durationDays
+        : bItem.qtyMode === 'perDays'
+          ? bItem.qty * Math.ceil(durationDays / daysDivisor)
+          : bItem.qty;
+      return baseQty + (bItem.spareQty || 0);
+  };
 
   // --- Dynamic Category Filtering Logic ---
   // Get all items that are in the currently selected folder and group
@@ -202,9 +223,27 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
           </div>
         </div>
         <div className="flex items-center gap-4 w-full md:w-auto">
+          <select value={tripType} onChange={(e) => setTripType(e.target.value)} className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500">
+            {TRIP_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+          </select>
           <input type="date" value={tripDate} onChange={(e) => setTripDate(e.target.value)} className="bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500" />
+          <div className="flex items-center gap-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2">
+            <input type="number" min="1" value={durationDays} onChange={(e) => setDurationDays(Math.max(1, parseInt(e.target.value) || 1))} className="w-12 bg-transparent text-center font-bold text-slate-700 dark:text-slate-200 outline-none" />
+            <span className="text-sm text-slate-400">天</span>
+          </div>
           <button onClick={handleSave} className="flex items-center gap-2 bg-blue-600 text-white px-6 py-2 rounded-lg hover:bg-blue-700 shadow-md transition-transform active:scale-95"><Save size={18} /><span>儲存行程</span></button>
         </div>
+      </div>
+
+      <div className="bg-white dark:bg-slate-800 px-4 py-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm shrink-0 flex flex-col md:flex-row md:items-center gap-3">
+        <div className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+          <Package size={16} className="text-purple-500" />
+          檢查基準組合包
+        </div>
+        <select value={baselineBundleId} onChange={(e) => setBaselineBundleId(e.target.value)} className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 text-slate-700 dark:text-slate-200 focus:ring-2 focus:ring-blue-500">
+          <option value="">不使用缺漏檢查</option>
+          {bundles.map(bundle => <option key={bundle.id} value={bundle.id}>{bundle.type ? `${bundle.type} / ` : ''}{bundle.name}</option>)}
+        </select>
       </div>
 
       <div className="flex-1 flex flex-col md:flex-row gap-4 overflow-hidden">
@@ -260,7 +299,8 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
                                 <h4 className="font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2"><Package size={16} className="text-purple-500"/>{bundle.name}</h4>
                                 <Plus size={16} className="text-purple-500 opacity-0 group-hover:opacity-100 transition-opacity" />
                             </div>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">包含 {bundle.items.length} 個物品</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{bundle.type || '其他'} / 包含 {bundle.items.length} 個物品</p>
+                            <p className="text-xs text-purple-500 dark:text-purple-300 mt-1">依 {durationDays} 天計算，共 {bundle.items.reduce((sum, item) => sum + calculateBundleQty(item), 0)} 件</p>
                         </button>
                     ))}
                     {bundles.length === 0 && <div className="col-span-full text-center text-slate-400 text-sm py-8">尚未建立任何組合包</div>}

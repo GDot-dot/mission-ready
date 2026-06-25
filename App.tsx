@@ -10,6 +10,7 @@ import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES,
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, ShoppingList, ShoppingCategory } from './types';
 import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle, ShoppingCart, DollarSign } from 'lucide-react';
 import { cloudSync } from './firebaseConfig';
+import { getClientId, isDeleted, stampSyncMeta } from './syncUtils';
 
 const AUTO_SYNC_DELAY_MS = 2500;
 
@@ -31,6 +32,7 @@ export default function App() {
   const [syncStatus, setSyncStatus] = useState<'idle' | 'pending' | 'syncing' | 'synced' | 'error'>('idle');
   const [syncError, setSyncError] = useState('');
   const [hasCloudBaseline, setHasCloudBaseline] = useState(false);
+  const clientId = useRef(getClientId());
   const [darkMode, setDarkMode] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   
@@ -39,6 +41,7 @@ export default function App() {
   const isFirstLoad = useRef(true);
   const isApplyingCloudData = useRef(false);
   const autoSyncTimer = useRef<number | null>(null);
+  const backupInputRef = useRef<HTMLInputElement | null>(null);
 
   // --- Dark Mode ---
   useEffect(() => {
@@ -127,6 +130,8 @@ export default function App() {
     
     loadedTrips = loadedTrips.map(trip => ({
       ...trip,
+      durationDays: trip.durationDays || 1,
+      type: trip.type || '工作',
       groups: trip.groups || [{ id: DEFAULT_TRIP_GROUP_ID, name: '主要清單' }],
       items: trip.items.map(item => ({
             ...item,
@@ -231,7 +236,7 @@ export default function App() {
 
   const handleSaveTrip = (updatedTrip: Trip) => {
     if (!user) return;
-    const tripWithUser = { ...updatedTrip, userId: user.id };
+    const tripWithUser = stampSyncMeta({ ...updatedTrip, userId: user.id }, clientId.current);
     
     setTrips(prev => {
       const exists = prev.find(t => t.id === updatedTrip.id);
@@ -254,9 +259,13 @@ export default function App() {
               name: `${trip.name} (Copy)`,
               date: new Date().toISOString().split('T')[0],
               status: 'planning',
+              revision: 0,
+              updatedAt: undefined,
+              updatedByClientId: undefined,
+              deletedAt: null,
               items: trip.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), checked: false }))
           };
-          setTrips(prev => [newTrip, ...prev]);
+          setTrips(prev => [stampSyncMeta(newTrip, clientId.current), ...prev]);
       }
   };
 
@@ -273,7 +282,7 @@ export default function App() {
   const handleDeleteTrip = (e: React.MouseEvent, tripId: string) => {
     e.stopPropagation();
     if(window.confirm("確定要刪除這個行程紀錄嗎？")) {
-      setTrips(prev => prev.filter(t => t.id !== tripId));
+      setTrips(prev => prev.map(t => t.id === tripId ? stampSyncMeta({ ...t, deletedAt: new Date().toISOString(), deletedByClientId: clientId.current }, clientId.current) : t));
       if(activeTripId === tripId) {
         setActiveTripId(null);
         setView('DASHBOARD');
@@ -293,7 +302,7 @@ export default function App() {
     setIsSyncing(true);
     setSyncStatus('syncing');
     setSyncError('');
-    const data = { inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories };
+    const data = { inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories, clientId: clientId.current };
     try {
         const result = await cloudSync.upload(user.id, data);
         if (result.success) {
@@ -332,6 +341,57 @@ export default function App() {
         } else { alert('❌ 下載失敗，找不到資料'); }
     } catch (e) { console.error(e); alert('❌ 下載發生錯誤'); } 
     finally { setIsSyncing(false); }
+  };
+
+  const handleExportBackup = () => {
+    if (!user) return;
+    const backup = {
+      version: 1,
+      exportedAt: new Date().toISOString(),
+      user: { id: user.id, username: user.username },
+      data: { inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories }
+    };
+    const blob = new Blob([JSON.stringify(backup, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `mission-ready-backup-${new Date().toISOString().split('T')[0]}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportBackup = async (file: File) => {
+    try {
+      const backup = JSON.parse(await file.text());
+      if (!backup?.data) {
+        alert('❌ 備份檔格式不正確');
+        return;
+      }
+      if (!window.confirm('匯入備份會覆蓋目前本機資料，並在稍後自動同步到雲端。確定要繼續嗎？')) return;
+
+      isApplyingCloudData.current = true;
+      const data = backup.data;
+      setInventory(data.inventory || []);
+      setTrips(data.trips || []);
+      setFolders(data.folders || INITIAL_FOLDERS);
+      setGroups(data.groups || INITIAL_GROUPS);
+      setCategories(data.categories || INITIAL_CATEGORIES);
+      setBundles(data.bundles || INITIAL_BUNDLES);
+      setShoppingLists(data.shoppingLists || []);
+      setShoppingCategories(data.shoppingCategories || INITIAL_SHOPPING_CATEGORIES);
+
+      setTimeout(() => {
+        isApplyingCloudData.current = false;
+        setHasUnsavedChanges(true);
+        setSyncStatus('pending');
+        setSyncError('');
+      }, 0);
+    } catch (error) {
+      console.error(error);
+      alert('❌ 匯入失敗，請確認這是 Mission Ready 的 JSON 備份檔');
+    } finally {
+      if (backupInputRef.current) backupInputRef.current.value = '';
+    }
   };
 
   useEffect(() => {
@@ -386,12 +446,14 @@ export default function App() {
   // --- Render ---
   if (!user) return <Auth onLogin={handleLogin} />;
 
-  const activeTrip = trips.find(t => t.id === activeTripId) || null;
-  const activeShoppingList = shoppingLists.find(l => l.id === activeShoppingListId) || null;
+  const visibleTrips = trips.filter(t => !isDeleted(t));
+  const visibleShoppingLists = shoppingLists.filter(l => !isDeleted(l));
+  const activeTrip = visibleTrips.find(t => t.id === activeTripId) || null;
+  const activeShoppingList = visibleShoppingLists.find(l => l.id === activeShoppingListId) || null;
 
   // Global Search Logic
   const searchResultsItems = inventory.filter(i => i.name.toLowerCase().includes(globalSearch.toLowerCase()));
-  const searchResultsTrips = trips.filter(t => t.name.toLowerCase().includes(globalSearch.toLowerCase()));
+  const searchResultsTrips = visibleTrips.filter(t => t.name.toLowerCase().includes(globalSearch.toLowerCase()));
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
@@ -418,6 +480,9 @@ export default function App() {
                   <button onClick={toggleDarkMode} className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
                       {darkMode ? <Sun size={20} /> : <Moon size={20} />}
                   </button>
+                  <input ref={backupInputRef} type="file" accept="application/json" className="hidden" onChange={(e) => e.target.files?.[0] && handleImportBackup(e.target.files[0])} />
+                  <button onClick={handleExportBackup} className="hidden md:inline-flex px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">匯出</button>
+                  <button onClick={() => backupInputRef.current?.click()} className="hidden md:inline-flex px-2 py-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">匯入</button>
                   {isSyncing ? (
                     <Loader2 size={18} className="animate-spin text-slate-400" />
                   ) : (
@@ -433,6 +498,19 @@ export default function App() {
                         <button onClick={handleCloudDownload} className="p-2 text-slate-400 hover:text-green-600 hover:bg-green-50 dark:hover:bg-slate-800 rounded-lg transition-colors" title="下載"><DownloadCloud size={20} /></button>
                     </>
                   )}
+                  <span className={`hidden lg:inline text-xs font-medium ${
+                    syncStatus === 'error' ? 'text-red-500' :
+                    syncStatus === 'syncing' ? 'text-blue-500' :
+                    hasUnsavedChanges ? 'text-amber-500' :
+                    syncStatus === 'synced' ? 'text-green-600 dark:text-green-400' :
+                    'text-slate-400'
+                  }`}>
+                    {syncStatus === 'error' ? '同步失敗' :
+                     syncStatus === 'syncing' ? (hasCloudBaseline ? '同步中' : '載入雲端') :
+                     hasUnsavedChanges ? '等待同步' :
+                     syncStatus === 'synced' ? '已同步' :
+                     !hasCloudBaseline && user ? '載入雲端' : '未同步'}
+                  </span>
                   <div className="h-4 w-px bg-slate-200 dark:bg-slate-700 mx-1"></div>
                   <div className="hidden md:flex items-center gap-2 text-slate-600 dark:text-slate-300 text-sm font-medium px-2">
                     <UserIcon size={16} />
@@ -523,13 +601,13 @@ export default function App() {
                     <div>
                         <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Calendar size={20} className="text-slate-500" />最近行程</h2>
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {trips.length === 0 ? (
+                            {visibleTrips.length === 0 ? (
                                 <div className="col-span-full bg-white dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-12 text-center text-slate-400">
                                     <Briefcase size={48} className="mx-auto mb-4 opacity-50" />
                                     <p>尚無行程紀錄，點擊上方按鈕開始建立。</p>
                                 </div>
                             ) : (
-                                trips.map(trip => {
+                                visibleTrips.map(trip => {
                                     const completedCount = trip.items.filter(i => i.checked).length;
                                     const totalCount = trip.items.length;
                                     const percent = totalCount === 0 ? 0 : Math.round((completedCount/totalCount)*100);
@@ -539,6 +617,10 @@ export default function App() {
                                                 <div className="min-w-0 pr-4">
                                                     <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 group-hover:text-blue-600 transition-colors truncate">{trip.name}</h3>
                                                     <p className="text-sm text-slate-500 dark:text-slate-400">{trip.date}</p>
+                                                    <div className="flex gap-1 mt-2">
+                                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{trip.type || '工作'}</span>
+                                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{trip.durationDays || 1} 天</span>
+                                                    </div>
                                                 </div>
                                                 <div className="flex flex-col items-end shrink-0">
                                                     <span className={`text-xs font-bold px-2 py-1 rounded-full ${percent === 100 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>{percent === 100 ? '已完成' : '進行中'}</span>
@@ -566,11 +648,11 @@ export default function App() {
 
         {view === 'INVENTORY' && <div className="animate-in fade-in slide-in-from-bottom-4 duration-300"><Inventory items={inventory} setItems={setInventory} folders={folders} setFolders={setFolders} groups={groups} setGroups={setGroups} categories={categories} setCategories={setCategories} bundles={bundles} setBundles={setBundles} /></div>}
         {view === 'TRIP_EDIT' && <div className="animate-in fade-in zoom-in-95 duration-200"><TripEditor inventory={inventory} folders={folders} groups={groups} categories={categories} bundles={bundles} currentTrip={activeTrip} onSave={handleSaveTrip} onCancel={() => setView(activeTripId ? 'TRIP_RUN' : 'DASHBOARD')} /></div>}
-        {view === 'TRIP_RUN' && activeTrip && <div className="animate-in fade-in slide-in-from-right-4 duration-300"><TripRunner trip={activeTrip} categories={categories} onUpdateTrip={handleSaveTrip} onBack={() => setView('DASHBOARD')} onEdit={() => setView('TRIP_EDIT')} /></div>}
+        {view === 'TRIP_RUN' && activeTrip && <div className="animate-in fade-in slide-in-from-right-4 duration-300"><TripRunner trip={activeTrip} categories={categories} inventory={inventory} bundles={bundles} onUpdateTrip={handleSaveTrip} onBack={() => setView('DASHBOARD')} onEdit={() => setView('TRIP_EDIT')} /></div>}
         
         {view === 'SHOPPING_DASHBOARD' && (
             <ShoppingDashboard 
-                lists={shoppingLists} 
+                lists={visibleShoppingLists} 
                 categories={shoppingCategories}
                 onCreateList={() => {
                     const newList: ShoppingList = {
@@ -582,14 +664,14 @@ export default function App() {
                         items: [],
                         groups: [{ id: DEFAULT_SHOPPING_GROUP_ID, name: '主要清單' }]
                     };
-                    setShoppingLists(prev => [newList, ...prev]);
+                    setShoppingLists(prev => [stampSyncMeta(newList, clientId.current), ...prev]);
                     setActiveShoppingListId(newList.id);
                     setView('SHOPPING_LIST');
                 }}
                 onOpenList={(id) => { setActiveShoppingListId(id); setView('SHOPPING_LIST'); }}
                 onDeleteList={(id) => {
                     if(window.confirm("確定要刪除這個採購清單嗎？")) {
-                        setShoppingLists(prev => prev.filter(l => l.id !== id));
+                        setShoppingLists(prev => prev.map(l => l.id === id ? stampSyncMeta({ ...l, deletedAt: new Date().toISOString(), deletedByClientId: clientId.current }, clientId.current) : l));
                     }
                 }}
                 onDuplicateList={(list) => {
@@ -599,9 +681,13 @@ export default function App() {
                             id: Math.random().toString(36).substring(2, 9),
                             name: `${list.name} (Copy)`,
                             date: new Date().toISOString().split('T')[0],
+                            revision: 0,
+                            updatedAt: undefined,
+                            updatedByClientId: undefined,
+                            deletedAt: null,
                             items: list.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), status: 'to_buy' }))
                         };
-                        setShoppingLists(prev => [newList, ...prev]);
+                        setShoppingLists(prev => [stampSyncMeta(newList, clientId.current), ...prev]);
                     }
                 }}
                 onUpdateCategories={setShoppingCategories}
@@ -613,7 +699,7 @@ export default function App() {
                     list={activeShoppingList} 
                     categories={shoppingCategories}
                     onSave={(updatedList) => {
-                        setShoppingLists(prev => prev.map(l => l.id === updatedList.id ? updatedList : l));
+                        setShoppingLists(prev => prev.map(l => l.id === updatedList.id ? stampSyncMeta(updatedList, clientId.current) : l));
                     }}
                     onBack={() => setView('SHOPPING_DASHBOARD')}
                 />

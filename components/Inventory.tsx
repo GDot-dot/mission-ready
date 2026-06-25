@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { InventoryItem, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, BundleItem } from '../types';
-import { CATEGORY_PALETTE, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from '../constants';
+import { BUNDLE_TYPES, CATEGORY_PALETTE, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID } from '../constants';
 import { Plus, Trash2, Search, X, Folder, FolderPlus, LayoutGrid, Tag, Edit2, Package, PackagePlus, CheckSquare, Square, Save, Archive } from 'lucide-react';
 
 interface InventoryProps {
@@ -45,6 +45,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   const [activeBundleId, setActiveBundleId] = useState<string | null>(null); // null = creating new or none selected
   const [isEditingBundleMode, setIsEditingBundleMode] = useState(false); // True if right panel is showing bundle editor
   const [bundleFormName, setBundleFormName] = useState('');
+  const [bundleFormType, setBundleFormType] = useState(BUNDLE_TYPES[0]);
   const [bundleFormItems, setBundleFormItems] = useState<BundleItem[]>([]);
 
   useEffect(() => { setActiveGroupId('ALL'); }, [activeFolderId]);
@@ -70,6 +71,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
       setIsEditingBundleMode(true);
       setActiveBundleId(null);
       setBundleFormName('');
+      setBundleFormType(BUNDLE_TYPES[0]);
       setBundleFormItems([]);
   };
 
@@ -77,6 +79,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
       setIsEditingBundleMode(true);
       setActiveBundleId(bundle.id);
       setBundleFormName(bundle.name);
+      setBundleFormType(bundle.type || BUNDLE_TYPES[0]);
       setBundleFormItems([...bundle.items]);
   };
 
@@ -85,6 +88,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
       const newBundle: InventoryBundle = {
           id: activeBundleId || Math.random().toString(36).substring(2, 9),
           name: bundleFormName,
+          type: bundleFormType,
           items: bundleFormItems
       };
       if (activeBundleId) setBundles(prev => prev.map(b => b.id === activeBundleId ? newBundle : b));
@@ -110,6 +114,10 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
 
   const updateBundleItemQty = (itemId: string, qty: number) => {
       setBundleFormItems(prev => prev.map(i => i.inventoryId === itemId ? { ...i, qty } : i));
+  };
+
+  const updateBundleItemRule = (itemId: string, updates: Partial<BundleItem>) => {
+      setBundleFormItems(prev => prev.map(i => i.inventoryId === itemId ? { ...i, ...updates } : i));
   };
 
   const filteredItems = items.filter(item => {
@@ -197,7 +205,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                                 <div className="flex justify-between items-start">
                                     <div>
                                         <h4 className={`font-bold ${activeBundleId === bundle.id && isEditingBundleMode ? 'text-blue-700 dark:text-blue-300' : 'text-slate-700 dark:text-slate-200'}`}>{bundle.name}</h4>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400">{bundle.items.length} 個物品</p>
+                                        <p className="text-xs text-slate-500 dark:text-slate-400">{bundle.type || '其他'} / {bundle.items.length} 個物品</p>
                                     </div>
                                     <div className="flex gap-1">
                                         <button onClick={(e) => handleDeleteBundle(e, bundle.id)} className="p-1 text-slate-400 hover:text-red-600 rounded opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={14} /></button>
@@ -226,6 +234,9 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                                 <label className="block text-xs text-slate-400 font-bold uppercase tracking-wider mb-1">組合包名稱</label>
                                 <input className="w-full bg-transparent text-xl font-bold text-slate-800 dark:text-white border-b border-transparent hover:border-slate-300 focus:border-blue-500 focus:outline-none" placeholder="輸入名稱..." value={bundleFormName} onChange={e => setBundleFormName(e.target.value)} />
                             </div>
+                            <select value={bundleFormType} onChange={e => setBundleFormType(e.target.value)} className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-700 dark:text-slate-200 focus:ring-1 focus:ring-blue-500 outline-none">
+                                {BUNDLE_TYPES.map(type => <option key={type} value={type}>{type}</option>)}
+                            </select>
                         </div>
                         <div className="flex gap-2">
                             <button onClick={() => setIsEditingBundleMode(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 dark:text-slate-400 dark:hover:bg-slate-700 rounded-lg">取消</button>
@@ -257,6 +268,25 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                                             <div className="mt-2 pt-2 border-t border-blue-200 dark:border-blue-800 flex items-center justify-between" onClick={e => e.stopPropagation()}>
                                                 <span className="text-xs font-bold text-blue-700 dark:text-blue-300">數量:</span>
                                                 <input type="number" min="1" value={inBundle.qty} onChange={e => updateBundleItemQty(item.id, parseInt(e.target.value)||1)} className="w-16 text-center text-sm font-bold bg-white dark:bg-slate-900 border border-blue-300 dark:border-blue-700 text-blue-800 dark:text-blue-100 rounded py-1 outline-none focus:ring-2 focus:ring-blue-500" />
+                                            </div>
+                                        )}
+                                        {inBundle && (
+                                            <div className="mt-2 grid grid-cols-2 gap-2" onClick={e => e.stopPropagation()}>
+                                                <select value={inBundle.qtyMode || 'fixed'} onChange={e => updateBundleItemRule(item.id, { qtyMode: e.target.value as BundleItem['qtyMode'] })} className="col-span-2 text-xs bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded px-2 py-1 text-slate-700 dark:text-slate-200 outline-none">
+                                                    <option value="fixed">固定數量</option>
+                                                    <option value="perDay">每天數量</option>
+                                                    <option value="perDays">每 N 天數量</option>
+                                                </select>
+                                                {(inBundle.qtyMode || 'fixed') === 'perDays' && (
+                                                    <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                        每幾天
+                                                        <input type="number" min="1" value={inBundle.daysDivisor || 1} onChange={e => updateBundleItemRule(item.id, { daysDivisor: parseInt(e.target.value) || 1 })} className="mt-1 w-full text-center text-xs bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded py-1 outline-none" />
+                                                    </label>
+                                                )}
+                                                <label className="text-[11px] text-slate-500 dark:text-slate-400">
+                                                    備品
+                                                    <input type="number" min="0" value={inBundle.spareQty || 0} onChange={e => updateBundleItemRule(item.id, { spareQty: parseInt(e.target.value) || 0 })} className="mt-1 w-full text-center text-xs bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded py-1 outline-none" />
+                                                </label>
                                             </div>
                                         )}
                                     </div>

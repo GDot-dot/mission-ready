@@ -8,6 +8,9 @@ export const DEFAULT_GROUP_ID = 'group_default';
 export const DEFAULT_TRIP_GROUP_ID = 'trip_group_default';
 export const DEFAULT_SHOPPING_GROUP_ID = 'shopping_group_default';
 
+export const TRIP_TYPES = ['工作', '旅遊', '維修', 'Demo', '海外', '其他'];
+export const BUNDLE_TYPES = ['維修', 'Demo', '海外', '短差', '長差', '旅遊', '其他'];
+
 // New: Color Palette for User Selection
 export const CATEGORY_PALETTE = [
   { name: 'Amber', class: 'bg-amber-50 text-amber-700 border-amber-200' },

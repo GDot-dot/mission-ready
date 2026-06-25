@@ -40,6 +40,14 @@ const getUserSettingsFromDoc = (snapshotData: any) => {
   return safeParseCloudData(snapshotData.data);
 };
 
+const hasNewerRemoteVersion = (localRecord: any, remoteRecord: any, clientId: string) => {
+  if (!remoteRecord || remoteRecord.updatedByClientId === clientId) return false;
+
+  const remoteTime = Date.parse(remoteRecord.updatedAt || "0");
+  const localTime = Date.parse(localRecord.updatedAt || "0");
+  return remoteTime > localTime;
+};
+
 const commitBatches = async (writes: Array<(batch: ReturnType<typeof writeBatch>) => void>) => {
   for (let i = 0; i < writes.length; i += FIRESTORE_BATCH_LIMIT) {
     const batch = writeBatch(db);
@@ -100,7 +108,7 @@ export const cloudAuth = {
 export const cloudSync = {
   upload: async (userId: string, data: any) => {
     try {
-      const { trips = [], shoppingLists = [], ...settingsData } = data;
+      const { trips = [], shoppingLists = [], clientId = "", ...settingsData } = data;
       const now = new Date().toISOString();
       const ownedTripIds = trips.filter((trip: any) => trip.userId === userId).map((trip: any) => trip.id);
       const ownedShoppingListIds = shoppingLists.filter((list: any) => list.userId === userId).map((list: any) => list.id);
@@ -115,6 +123,34 @@ export const cloudSync = {
                   return { success: false, error: "本地物品庫為空，為防止誤刪，已取消上傳。請先執行下載。" };
               }
           }
+      }
+
+      const conflictChecks = [
+        ...trips
+          .filter((trip: any) => trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId)))
+          .map(async (trip: any) => {
+            const remoteSnap = await getDoc(doc(db, "trips", trip.id));
+            return remoteSnap.exists() && hasNewerRemoteVersion(trip, remoteSnap.data(), clientId)
+              ? { type: "trip", id: trip.id, name: trip.name }
+              : null;
+          }),
+        ...shoppingLists
+          .filter((list: any) => list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId)))
+          .map(async (list: any) => {
+            const remoteSnap = await getDoc(doc(db, "shopping_lists", list.id));
+            return remoteSnap.exists() && hasNewerRemoteVersion(list, remoteSnap.data(), clientId)
+              ? { type: "shoppingList", id: list.id, name: list.name }
+              : null;
+          })
+      ];
+
+      const conflicts = (await Promise.all(conflictChecks)).filter(Boolean);
+      if (conflicts.length > 0) {
+        return {
+          success: false,
+          conflict: true,
+          error: `雲端有較新的資料，已暫停上傳：${conflicts.map((item: any) => item.name || item.id).join("、")}`
+        };
       }
 
       const writes: Array<(batch: ReturnType<typeof writeBatch>) => void> = [

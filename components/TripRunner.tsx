@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { Trip, TripItem, InventoryCategory } from '../types';
-import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X, Share, Users, Trash2, ChevronDown, ChevronUp } from 'lucide-react';
+import { Trip, TripItem, InventoryCategory, InventoryBundle, InventoryItem } from '../types';
+import { ArrowLeft, CheckCircle2, Circle, Edit3, PieChart, Layers, X, Share, Users, Trash2, ChevronDown, ChevronUp, EyeOff, PackagePlus } from 'lucide-react';
 import { cloudSync, cloudAuth } from '../firebaseConfig';
 
 interface TripRunnerProps {
   trip: Trip;
   categories: InventoryCategory[];
+  inventory: InventoryItem[];
+  bundles: InventoryBundle[];
   onUpdateTrip: (trip: Trip) => void;
   onBack: () => void;
   onEdit: () => void;
@@ -14,12 +16,13 @@ interface TripRunnerProps {
 interface SummaryItem { name: string; totalQty: number; details: { version: string, qty: number }[]; }
 interface SummaryCategory { categoryId: string; items: SummaryItem[]; }
 
-export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpdateTrip, onBack, onEdit }) => {
+export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, inventory, bundles, onUpdateTrip, onBack, onEdit }) => {
   const [localTrip, setLocalTrip] = useState<Trip>(trip);
   const [showSummary, setShowSummary] = useState(false);
   const [isSharing, setIsSharing] = useState(false);
   const [shareUsername, setShareUsername] = useState('');
   const [sharedUsersList, setSharedUsersList] = useState<{id: string, name: string}[]>([]);
+  const [showUncheckedOnly, setShowUncheckedOnly] = useState(false);
   
   // Collapsed Groups State
   const [collapsedGroups, setCollapsedGroups] = useState<Set<string>>(new Set());
@@ -66,6 +69,46 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
 
   const progress = Math.round((localTrip.items.filter(i => i.checked).length / localTrip.items.length) * 100) || 0;
   const getCategoryInfo = (catId: string) => { const cat = categories.find(c => c.id === catId); return { name: cat?.name || '未知', color: cat?.color || 'bg-gray-100 text-gray-600 border-gray-200' }; };
+  const baselineBundle = localTrip.baselineBundleId ? bundles.find(bundle => bundle.id === localTrip.baselineBundleId) : null;
+  const calculateBundleQty = (bundleItem: InventoryBundle['items'][number]) => {
+      const durationDays = Math.max(1, localTrip.durationDays || 1);
+      const daysDivisor = Math.max(1, bundleItem.daysDivisor || 1);
+      const baseQty = bundleItem.qtyMode === 'perDay'
+        ? bundleItem.qty * durationDays
+        : bundleItem.qtyMode === 'perDays'
+          ? bundleItem.qty * Math.ceil(durationDays / daysDivisor)
+          : bundleItem.qty;
+      return baseQty + (bundleItem.spareQty || 0);
+  };
+  const missingBundleItems = baselineBundle
+      ? baselineBundle.items
+          .filter(bundleItem => !localTrip.items.some(item => item.inventoryId === bundleItem.inventoryId))
+          .map(bundleItem => ({ bundleItem, inventoryItem: inventory.find(item => item.id === bundleItem.inventoryId) }))
+          .filter((entry): entry is { bundleItem: InventoryBundle['items'][number]; inventoryItem: InventoryItem } => Boolean(entry.inventoryItem))
+      : [];
+
+  const handleAddMissingItems = () => {
+      if (!baselineBundle || missingBundleItems.length === 0) return;
+      const targetGroupId = localTrip.groups[0]?.id;
+      if (!targetGroupId) return;
+
+      const newItems: TripItem[] = missingBundleItems.map(({ bundleItem, inventoryItem }) => ({
+          id: Math.random().toString(36).substring(2, 9),
+          inventoryId: inventoryItem.id,
+          tripGroupId: targetGroupId,
+          name: inventoryItem.name,
+          category: inventoryItem.category,
+          qty: calculateBundleQty(bundleItem),
+          version: inventoryItem.defaultVersion || '',
+          checked: false
+      }));
+      const updatedTrip = { ...localTrip, items: [...localTrip.items, ...newItems], status: 'active' as const };
+      setLocalTrip(updatedTrip);
+      onUpdateTrip(updatedTrip);
+  };
+
+  const collapseAllGroups = () => setCollapsedGroups(new Set(localTrip.groups.map(group => group.id)));
+  const expandAllGroups = () => setCollapsedGroups(new Set());
   
   const generateSummary = () => {
       const summary: SummaryCategory[] = [];
@@ -91,7 +134,7 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
   const handleExportText = () => {
       let text = `# ${localTrip.name}\n📅 日期：${localTrip.date}\n\n`;
       localTrip.groups.forEach(g => {
-          const items = localTrip.items.filter(i => i.tripGroupId === g.id);
+          const items = localTrip.items.filter(i => i.tripGroupId === g.id && (!showUncheckedOnly || !i.checked));
           if (items.length > 0) {
               text += `## ${g.name}\n`;
               items.forEach(i => {
@@ -246,6 +289,30 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
             {localTrip.name}
             {localTrip.sharedWith && localTrip.sharedWith.length > 0 && <Users size={20} className="text-purple-500" title="此為共用行程"/>}
         </h1>
+        <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+            <span className="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">{localTrip.type || '工作'}</span>
+            <span className="px-2 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">{localTrip.durationDays || 1} 天</span>
+            {baselineBundle && <span className="px-2 py-1 rounded-full bg-purple-50 dark:bg-purple-900/20 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800">基準：{baselineBundle.name}</span>}
+        </div>
+        <div className="flex flex-wrap gap-2 mb-3">
+            <button onClick={() => setShowUncheckedOnly(prev => !prev)} className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-sm border transition-all ${showUncheckedOnly ? 'bg-blue-50 dark:bg-blue-900/20 border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300' : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'}`}>
+                <EyeOff size={16} />只看未完成
+            </button>
+            <button onClick={expandAllGroups} className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">全部展開</button>
+            <button onClick={collapseAllGroups} className="px-3 py-1.5 rounded-lg text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700">全部收合</button>
+        </div>
+        {baselineBundle && missingBundleItems.length > 0 && (
+            <div className="mb-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="text-sm text-amber-800 dark:text-amber-200">
+                    <span className="font-bold">缺少 {missingBundleItems.length} 項基準裝備：</span>
+                    {missingBundleItems.slice(0, 4).map(entry => entry.inventoryItem.name).join('、')}
+                    {missingBundleItems.length > 4 ? '...' : ''}
+                </div>
+                <button onClick={handleAddMissingItems} className="flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 whitespace-nowrap">
+                    <PackagePlus size={16} />加入缺少項目
+                </button>
+            </div>
+        )}
         {/* Progress Bar logic ... same as before */}
         <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center gap-4">
           <div className="flex-1 h-3 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
@@ -257,9 +324,12 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
 
       {/* Groups Rendering logic */}
       {localTrip.groups.map(group => {
-        const groupItems = localTrip.items.filter(i => i.tripGroupId === group.id);
+        const allGroupItems = localTrip.items.filter(i => i.tripGroupId === group.id);
+        const groupItems = allGroupItems.filter(i => !showUncheckedOnly || !i.checked);
         if (groupItems.length === 0) return null;
         const isCollapsed = collapsedGroups.has(group.id);
+        const groupCompleted = allGroupItems.filter(i => i.checked).length;
+        const groupPercent = allGroupItems.length === 0 ? 0 : Math.round((groupCompleted / allGroupItems.length) * 100);
         
         return (
             <div key={group.id} className="space-y-3 bg-white dark:bg-slate-800/50 rounded-xl border border-transparent dark:border-slate-800">
@@ -271,8 +341,9 @@ export const TripRunner: React.FC<TripRunnerProps> = ({ trip, categories, onUpda
                     <Layers size={18} className="text-blue-500"/>
                     {group.name}
                     <span className="text-xs font-normal text-slate-400 ml-2 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-full">
-                        {groupItems.filter(i => i.checked).length}/{groupItems.length}
+                        {groupCompleted}/{allGroupItems.length}
                     </span>
+                    <span className={`text-xs font-normal px-2 py-0.5 rounded-full ${groupPercent === 100 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-300' : 'bg-blue-50 text-blue-700 dark:bg-blue-900/20 dark:text-blue-300'}`}>{groupPercent}%</span>
                 </h3>
                 <div className="text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-200 transition-colors">
                     {isCollapsed ? <ChevronDown size={20} /> : <ChevronUp size={20} />}
