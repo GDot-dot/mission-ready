@@ -48,6 +48,22 @@ const hasNewerRemoteVersion = (localRecord: any, remoteRecord: any, clientId: st
   return remoteTime > localTime;
 };
 
+const stripUndefined = (value: any): any => {
+  if (Array.isArray(value)) {
+    return value.map(stripUndefined);
+  }
+
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, entryValue]) => entryValue !== undefined)
+        .map(([key, entryValue]) => [key, stripUndefined(entryValue)])
+    );
+  }
+
+  return value;
+};
+
 const commitBatches = async (writes: Array<(batch: ReturnType<typeof writeBatch>) => void>) => {
   for (let i = 0; i < writes.length; i += FIRESTORE_BATCH_LIMIT) {
     const batch = writeBatch(db);
@@ -109,12 +125,13 @@ export const cloudSync = {
   upload: async (userId: string, data: any) => {
     try {
       const { trips = [], shoppingLists = [], clientId = "", ...settingsData } = data;
+      const cleanSettingsData = stripUndefined(settingsData);
       const now = new Date().toISOString();
       const ownedTripIds = trips.filter((trip: any) => trip.userId === userId).map((trip: any) => trip.id);
       const ownedShoppingListIds = shoppingLists.filter((list: any) => list.userId === userId).map((list: any) => list.id);
       
       // Safety check: Prevent uploading empty inventory over existing data
-      if (!settingsData.inventory || settingsData.inventory.length === 0) {
+      if (!cleanSettingsData.inventory || cleanSettingsData.inventory.length === 0) {
           const docRef = doc(db, "users", userId);
           const docSnap = await getDoc(docRef);
           if (docSnap.exists()) {
@@ -157,10 +174,10 @@ export const cloudSync = {
         batch => batch.set(doc(db, "users", userId), {
           schemaVersion: CLOUD_SCHEMA_VERSION,
           lastUpdated: now,
-          settings: settingsData,
+          settings: cleanSettingsData,
           ownedTripIds,
           ownedShoppingListIds,
-          data: JSON.stringify(settingsData)
+          data: JSON.stringify(cleanSettingsData)
         })
       ];
 
@@ -169,20 +186,20 @@ export const cloudSync = {
       for (const trip of trips) {
           // If I am the owner OR I am in the sharedWith list
           if (trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId))) {
-              writes.push(batch => batch.set(doc(db, "trips", trip.id), {
+              writes.push(batch => batch.set(doc(db, "trips", trip.id), stripUndefined({
                 ...trip,
                 updatedAt: now
-              }));
+              })));
           }
       }
       
       // 3. Sync Shopping Lists to 'shopping_lists' collection
       for (const list of shoppingLists) {
           if (list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId))) {
-              writes.push(batch => batch.set(doc(db, "shopping_lists", list.id), {
+              writes.push(batch => batch.set(doc(db, "shopping_lists", list.id), stripUndefined({
                 ...list,
                 updatedAt: now
-              }));
+              })));
           }
       }
 

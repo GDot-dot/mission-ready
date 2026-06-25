@@ -6,7 +6,7 @@ import { Auth } from './components/Auth';
 import { ShoppingDashboard } from './components/ShoppingDashboard';
 import { ShoppingListEditor } from './components/ShoppingListEditor';
 import { CurrencyConverter } from './components/CurrencyConverter';
-import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, INITIAL_SHOPPING_CATEGORIES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID, DEFAULT_SHOPPING_GROUP_ID } from './constants';
+import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, INITIAL_SHOPPING_CATEGORIES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID, DEFAULT_SHOPPING_GROUP_ID, TRIP_TYPES } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, ShoppingList, ShoppingCategory } from './types';
 import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle, ShoppingCart, DollarSign } from 'lucide-react';
 import { cloudSync } from './firebaseConfig';
@@ -260,8 +260,6 @@ export default function App() {
               date: new Date().toISOString().split('T')[0],
               status: 'planning',
               revision: 0,
-              updatedAt: undefined,
-              updatedByClientId: undefined,
               deletedAt: null,
               items: trip.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), checked: false }))
           };
@@ -454,6 +452,11 @@ export default function App() {
   // Global Search Logic
   const searchResultsItems = inventory.filter(i => i.name.toLowerCase().includes(globalSearch.toLowerCase()));
   const searchResultsTrips = visibleTrips.filter(t => t.name.toLowerCase().includes(globalSearch.toLowerCase()));
+  const usedTripTypes = Array.from(new Set(visibleTrips.map(trip => trip.type || '工作')));
+  const orderedTripTypes = [
+    ...TRIP_TYPES.filter(type => usedTripTypes.includes(type)),
+    ...usedTripTypes.filter(type => !TRIP_TYPES.includes(type))
+  ];
 
   return (
     <div className="min-h-screen bg-slate-50 text-slate-900 font-sans dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
@@ -600,47 +603,60 @@ export default function App() {
                 {!globalSearch && (
                     <div>
                         <h2 className="text-xl font-bold text-slate-800 dark:text-white mb-4 flex items-center gap-2"><Calendar size={20} className="text-slate-500" />最近行程</h2>
-                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                            {visibleTrips.length === 0 ? (
-                                <div className="col-span-full bg-white dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-12 text-center text-slate-400">
-                                    <Briefcase size={48} className="mx-auto mb-4 opacity-50" />
-                                    <p>尚無行程紀錄，點擊上方按鈕開始建立。</p>
-                                </div>
-                            ) : (
-                                visibleTrips.map(trip => {
-                                    const completedCount = trip.items.filter(i => i.checked).length;
-                                    const totalCount = trip.items.length;
-                                    const percent = totalCount === 0 ? 0 : Math.round((completedCount/totalCount)*100);
+                        {visibleTrips.length === 0 ? (
+                            <div className="bg-white dark:bg-slate-800 border border-dashed border-slate-300 dark:border-slate-700 rounded-xl p-12 text-center text-slate-400">
+                                <Briefcase size={48} className="mx-auto mb-4 opacity-50" />
+                                <p>尚無行程紀錄，點擊上方按鈕開始建立。</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-8">
+                                {orderedTripTypes.map(type => {
+                                    const tripsInType = visibleTrips.filter(trip => (trip.type || '工作') === type);
+                                    if (tripsInType.length === 0) return null;
                                     return (
-                                        <div key={trip.id} onClick={() => handleOpenTrip(trip.id)} className="group bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-500/50 transition-all cursor-pointer relative">
-                                            <div className="flex justify-between items-start mb-3">
-                                                <div className="min-w-0 pr-4">
-                                                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 group-hover:text-blue-600 transition-colors truncate">{trip.name}</h3>
-                                                    <p className="text-sm text-slate-500 dark:text-slate-400">{trip.date}</p>
-                                                    <div className="flex gap-1 mt-2">
-                                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{trip.type || '工作'}</span>
-                                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{trip.durationDays || 1} 天</span>
-                                                    </div>
-                                                </div>
-                                                <div className="flex flex-col items-end shrink-0">
-                                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${percent === 100 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>{percent === 100 ? '已完成' : '進行中'}</span>
-                                                    <div className="flex gap-1 mt-2 z-10">
-                                                        <button onClick={(e) => handleDuplicateTrip(e, trip)} className="text-slate-300 hover:text-blue-500 p-1" title="複製"><Copy size={14}/></button>
-                                                        <button onClick={(e) => handleDeleteTrip(e, trip.id)} className="text-slate-300 hover:text-red-500 p-1" title="刪除"><X size={16}/></button>
-                                                    </div>
-                                                </div>
+                                        <section key={type} className="space-y-3">
+                                            <div className="flex items-center gap-2">
+                                                <h3 className="text-sm font-bold text-slate-600 dark:text-slate-300">{type}</h3>
+                                                <span className="text-xs px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 border border-slate-200 dark:border-slate-700">{tripsInType.length}</span>
                                             </div>
-                                            <div className="space-y-1">
-                                                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 font-medium"><span>進度</span><span>{completedCount}/{totalCount} 項目</span></div>
-                                                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                                                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${percent}%` }}></div>
-                                                </div>
+                                            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                                                {tripsInType.map(trip => {
+                                                    const completedCount = trip.items.filter(i => i.checked).length;
+                                                    const totalCount = trip.items.length;
+                                                    const percent = totalCount === 0 ? 0 : Math.round((completedCount/totalCount)*100);
+                                                    return (
+                                                        <div key={trip.id} onClick={() => handleOpenTrip(trip.id)} className="group bg-white dark:bg-slate-800 p-5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md hover:border-blue-200 dark:hover:border-blue-500/50 transition-all cursor-pointer relative">
+                                                            <div className="flex justify-between items-start mb-3">
+                                                                <div className="min-w-0 pr-4">
+                                                                    <h3 className="font-bold text-lg text-slate-800 dark:text-slate-100 group-hover:text-blue-600 transition-colors truncate">{trip.name}</h3>
+                                                                    <p className="text-sm text-slate-500 dark:text-slate-400">{trip.date}</p>
+                                                                    <div className="flex gap-1 mt-2">
+                                                                        <span className="text-[11px] px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300">{trip.durationDays || 1} 天</span>
+                                                                    </div>
+                                                                </div>
+                                                                <div className="flex flex-col items-end shrink-0">
+                                                                    <span className={`text-xs font-bold px-2 py-1 rounded-full ${percent === 100 ? 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>{percent === 100 ? '已完成' : '進行中'}</span>
+                                                                    <div className="flex gap-1 mt-2 z-10">
+                                                                        <button onClick={(e) => handleDuplicateTrip(e, trip)} className="text-slate-300 hover:text-blue-500 p-1" title="複製"><Copy size={14}/></button>
+                                                                        <button onClick={(e) => handleDeleteTrip(e, trip.id)} className="text-slate-300 hover:text-red-500 p-1" title="刪除"><X size={16}/></button>
+                                                                    </div>
+                                                                </div>
+                                                            </div>
+                                                            <div className="space-y-1">
+                                                                <div className="flex justify-between text-xs text-slate-500 dark:text-slate-400 font-medium"><span>進度</span><span>{completedCount}/{totalCount} 項目</span></div>
+                                                                <div className="h-2 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
+                                                                    <div className="h-full bg-blue-500 rounded-full" style={{ width: `${percent}%` }}></div>
+                                                                </div>
+                                                            </div>
+                                                        </div>
+                                                    )
+                                                })}
                                             </div>
-                                        </div>
-                                    )
-                                })
-                            )}
-                        </div>
+                                        </section>
+                                    );
+                                })}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>
@@ -682,8 +698,6 @@ export default function App() {
                             name: `${list.name} (Copy)`,
                             date: new Date().toISOString().split('T')[0],
                             revision: 0,
-                            updatedAt: undefined,
-                            updatedByClientId: undefined,
                             deletedAt: null,
                             items: list.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), status: 'to_buy' }))
                         };

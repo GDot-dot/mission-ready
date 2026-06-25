@@ -80,7 +80,7 @@ export interface Trip {
   date: string;
   type?: string;
   durationDays?: number;
-  baselineBundleId?: string;
+  baselineBundleId?: string | null;
   status: 'planning' | 'active' | 'completed';
   groups: TripGroup[]; // List of groups defined for this trip
   items: TripItem[];

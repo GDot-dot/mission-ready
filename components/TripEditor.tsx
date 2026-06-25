@@ -171,7 +171,7 @@ export const TripEditor: React.FC<TripEditorProps> = ({ inventory, folders, grou
       date: tripDate,
       type: tripType,
       durationDays,
-      baselineBundleId: baselineBundleId || undefined,
+      baselineBundleId: baselineBundleId || null,
       status: currentTrip?.status || 'planning',
       groups: tripGroups,
       items: tripItems
