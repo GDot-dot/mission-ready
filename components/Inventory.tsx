@@ -25,9 +25,17 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   const [filterCategory, setFilterCategory] = useState<string>('ALL');
   
   const [isAdding, setIsAdding] = useState(false);
+  const [editingItemId, setEditingItemId] = useState<string | null>(null);
   const [newItemName, setNewItemName] = useState('');
   const [newItemCategory, setNewItemCategory] = useState<string>(categories[0]?.id || '');
   const [newItemDefault, setNewItemDefault] = useState('');
+  const [editItemName, setEditItemName] = useState('');
+  const [editItemCategory, setEditItemCategory] = useState('');
+  const [editItemGroupId, setEditItemGroupId] = useState('');
+  const [editItemDefault, setEditItemDefault] = useState('');
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [bulkCategory, setBulkCategory] = useState('');
+  const [bulkGroupId, setBulkGroupId] = useState('');
 
   const [isAddingFolder, setIsAddingFolder] = useState(false);
   const [newFolderName, setNewFolderName] = useState('');
@@ -50,6 +58,7 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
 
   useEffect(() => { setActiveGroupId('ALL'); }, [activeFolderId]);
   useEffect(() => { if (!newItemCategory && categories.length > 0) { setNewItemCategory(categories[0].id); } }, [categories, newItemCategory]);
+  useEffect(() => { setSelectedItemIds([]); }, [activeFolderId, activeGroupId, filterCategory, searchTerm, viewMode]);
 
   const activeFolderName = folders.find(f => f.id === activeFolderId)?.name || '未知資料夾';
   const folderGroups = groups.filter(g => g.folderId === activeFolderId);
@@ -58,6 +67,49 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
   // Handlers
   const handleDeleteItem = (id: string) => { if (window.confirm('確定要從物品庫永久刪除此項目嗎？')) setItems(prev => prev.filter(item => item.id !== id)); };
   const handleAddItem = () => { if (!newItemName.trim()) return; setItems(prev => [...prev, { id: Math.random().toString(36).substring(2, 9), folderId: activeFolderId, groupId: activeGroupId === 'ALL' ? defaultGroupForFolder : activeGroupId, name: newItemName, category: newItemCategory, defaultVersion: newItemDefault }]); setNewItemName(''); setNewItemDefault(''); setIsAdding(false); };
+  const startEditingItem = (item: InventoryItem) => {
+    setEditingItemId(item.id);
+    setEditItemName(item.name);
+    setEditItemCategory(item.category);
+    setEditItemGroupId(item.groupId || defaultGroupForFolder);
+    setEditItemDefault(item.defaultVersion || '');
+  };
+  const cancelEditingItem = () => {
+    setEditingItemId(null);
+    setEditItemName('');
+    setEditItemCategory('');
+    setEditItemGroupId('');
+    setEditItemDefault('');
+  };
+  const saveEditingItem = () => {
+    if (!editingItemId || !editItemName.trim()) return;
+    setItems(prev => prev.map(item => item.id === editingItemId ? {
+      ...item,
+      name: editItemName.trim(),
+      category: editItemCategory || item.category,
+      groupId: editItemGroupId || defaultGroupForFolder,
+      defaultVersion: editItemDefault
+    } : item));
+    cancelEditingItem();
+  };
+  const toggleSelectedItem = (itemId: string) => {
+    setSelectedItemIds(prev => prev.includes(itemId) ? prev.filter(id => id !== itemId) : [...prev, itemId]);
+  };
+  const applyBulkEdit = () => {
+    if (selectedItemIds.length === 0) return;
+    if (!bulkCategory && !bulkGroupId) {
+      alert('請至少選擇一個要套用的分類或群組');
+      return;
+    }
+    setItems(prev => prev.map(item => selectedItemIds.includes(item.id) ? {
+      ...item,
+      category: bulkCategory || item.category,
+      groupId: bulkGroupId || item.groupId
+    } : item));
+    setSelectedItemIds([]);
+    setBulkCategory('');
+    setBulkGroupId('');
+  };
   const handleAddFolder = () => { if (!newFolderName.trim()) return; const newId = Math.random().toString(36).substring(2, 9); setFolders(prev => [...prev, { id: newId, name: newFolderName, isSystem: false }]); setGroups(prev => [...prev, { id: Math.random().toString(36).substring(2, 9), folderId: newId, name: '通用清單', isSystem: true }]); setNewFolderName(''); setIsAddingFolder(false); setActiveFolderId(newId); };
   const handleDeleteFolder = (e: React.MouseEvent, folderId: string) => { e.stopPropagation(); if (window.confirm('確定要刪除此資料夾嗎？')) { setItems(prev => prev.map(item => item.folderId === folderId ? { ...item, folderId: DEFAULT_FOLDER_ID, groupId: DEFAULT_GROUP_ID } : item)); setGroups(prev => prev.filter(g => g.folderId !== folderId)); setFolders(prev => prev.filter(f => f.id !== folderId)); if (activeFolderId === folderId) setActiveFolderId(DEFAULT_FOLDER_ID); } };
   const handleAddGroup = () => { if(!newGroupName.trim()) return; const newGroup = { id: Math.random().toString(36).substring(2, 9), folderId: activeFolderId, name: newGroupName, isSystem: false }; setGroups(prev => [...prev, newGroup]); setNewGroupName(''); setIsAddingGroup(false); setActiveGroupId(newGroup.id); };
@@ -370,6 +422,22 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                     </div>
                 </div>
 
+                {selectedItemIds.length > 0 && (
+                    <div className="p-3 border-b border-blue-100 dark:border-blue-900/50 bg-blue-50 dark:bg-blue-900/20 flex flex-col lg:flex-row gap-2 lg:items-center">
+                        <span className="text-sm font-bold text-blue-700 dark:text-blue-300 whitespace-nowrap">已選 {selectedItemIds.length} 個物品</span>
+                        <select value={bulkCategory} onChange={e => setBulkCategory(e.target.value)} className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none">
+                            <option value="">不變更技術分類</option>
+                            {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                        </select>
+                        <select value={bulkGroupId} onChange={e => setBulkGroupId(e.target.value)} className="bg-white dark:bg-slate-900 border border-blue-200 dark:border-blue-800 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none">
+                            <option value="">不變更群組</option>
+                            {folderGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                        </select>
+                        <button onClick={applyBulkEdit} className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700">套用</button>
+                        <button onClick={() => setSelectedItemIds([])} className="px-4 py-2 rounded-lg text-slate-500 hover:bg-white dark:hover:bg-slate-800 text-sm">取消選取</button>
+                    </div>
+                )}
+
                 <div className="flex-1 overflow-y-auto p-4 bg-slate-50/30 dark:bg-slate-900/30">
                     <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
                     {filteredItems.map(item => {
@@ -377,17 +445,58 @@ export const Inventory: React.FC<InventoryProps> = ({ items, setItems, folders, 
                         const category = categories.find(c => c.id === item.category);
                         const categoryColor = category?.color || 'bg-gray-100 text-gray-600 border-gray-200';
                         const categoryName = category?.name || '未知分類';
+                        const isEditingThisItem = editingItemId === item.id;
+                        const isSelected = selectedItemIds.includes(item.id);
                         return (
-                        <div key={item.id} className="group bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm hover:shadow-md transition-all">
-                            <div className="flex justify-between items-start mb-2">
-                            <div className="flex gap-2">
-                                <span className={`text-xs px-2 py-1 rounded-full border ${categoryColor}`}>{categoryName}</span>
-                                <span className="text-xs px-2 py-1 rounded-full border border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400">{itemGroupName}</span>
-                            </div>
-                            <button onClick={() => handleDeleteItem(item.id)} className="text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity"><Trash2 size={16} /></button>
-                            </div>
-                            <h3 className="font-bold text-slate-800 dark:text-white text-lg">{item.name}</h3>
-                            {item.defaultVersion && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">預設: <span className="bg-slate-100 dark:bg-slate-700 px-1 rounded text-slate-700 dark:text-slate-300">{item.defaultVersion}</span></p>}
+                        <div key={item.id} className={`group bg-white dark:bg-slate-800 p-4 rounded-xl border shadow-sm hover:shadow-md transition-all ${isSelected ? 'border-blue-400 dark:border-blue-500 ring-1 ring-blue-300 dark:ring-blue-700' : 'border-slate-200 dark:border-slate-700'}`}>
+                            {isEditingThisItem ? (
+                                <div className="space-y-3">
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 mb-1">物品名稱</label>
+                                        <input autoFocus value={editItemName} onChange={e => setEditItemName(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                                    </div>
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 mb-1">技術分類</label>
+                                            <select value={editItemCategory} onChange={e => setEditItemCategory(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                                                {categories.map(cat => <option key={cat.id} value={cat.id}>{cat.name}</option>)}
+                                            </select>
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 mb-1">群組</label>
+                                            <select value={editItemGroupId} onChange={e => setEditItemGroupId(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg px-2 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500">
+                                                {folderGroups.map(group => <option key={group.id} value={group.id}>{group.name}</option>)}
+                                            </select>
+                                        </div>
+                                    </div>
+                                    <div>
+                                        <label className="block text-xs font-bold text-slate-400 mb-1">預設備註/版本</label>
+                                        <input value={editItemDefault} onChange={e => setEditItemDefault(e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-600 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500" />
+                                    </div>
+                                    <div className="flex justify-end gap-2 pt-1">
+                                        <button onClick={cancelEditingItem} className="px-3 py-1.5 text-sm text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg">取消</button>
+                                        <button onClick={saveEditingItem} className="px-3 py-1.5 text-sm bg-blue-600 text-white hover:bg-blue-700 rounded-lg flex items-center gap-1"><Save size={14}/>儲存</button>
+                                    </div>
+                                </div>
+                            ) : (
+                                <>
+                                    <div className="flex justify-between items-start mb-2">
+                                    <div className="flex gap-2 items-center">
+                                        <button onClick={() => toggleSelectedItem(item.id)} className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${isSelected ? 'bg-blue-600 border-blue-600 text-white' : 'border-slate-300 dark:border-slate-600 text-transparent hover:border-blue-400'}`} title="選取">
+                                            <CheckSquare size={14} />
+                                        </button>
+                                        <span className={`text-xs px-2 py-1 rounded-full border ${categoryColor}`}>{categoryName}</span>
+                                        <span className="text-xs px-2 py-1 rounded-full border border-slate-100 dark:border-slate-600 bg-slate-50 dark:bg-slate-700 text-slate-500 dark:text-slate-400">{itemGroupName}</span>
+                                    </div>
+                                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <button onClick={() => startEditingItem(item)} className="text-slate-300 hover:text-blue-500 p-1" title="編輯"><Edit2 size={16} /></button>
+                                        <button onClick={() => handleDeleteItem(item.id)} className="text-slate-300 hover:text-red-500 p-1" title="刪除"><Trash2 size={16} /></button>
+                                    </div>
+                                    </div>
+                                    <h3 className="font-bold text-slate-800 dark:text-white text-lg">{item.name}</h3>
+                                    {item.defaultVersion && <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">預設: <span className="bg-slate-100 dark:bg-slate-700 px-1 rounded text-slate-700 dark:text-slate-300">{item.defaultVersion}</span></p>}
+                                </>
+                            )}
                         </div>
                         );
                     })}
