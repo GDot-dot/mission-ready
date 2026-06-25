@@ -124,11 +124,13 @@ export const cloudAuth = {
 export const cloudSync = {
   upload: async (userId: string, data: any) => {
     try {
-      const { trips = [], shoppingLists = [], clientId = "", ...settingsData } = data;
+      const { trips = [], shoppingLists = [], clientId = "", dirtyTripIds = [], dirtyShoppingListIds = [], ...settingsData } = data;
       const cleanSettingsData = stripUndefined(settingsData);
       const now = new Date().toISOString();
       const ownedTripIds = trips.filter((trip: any) => trip.userId === userId).map((trip: any) => trip.id);
       const ownedShoppingListIds = shoppingLists.filter((list: any) => list.userId === userId).map((list: any) => list.id);
+      const dirtyTripIdSet = new Set(dirtyTripIds);
+      const dirtyShoppingListIdSet = new Set(dirtyShoppingListIds);
       
       // Safety check: Prevent uploading empty inventory over existing data
       if (!cleanSettingsData.inventory || cleanSettingsData.inventory.length === 0) {
@@ -144,7 +146,7 @@ export const cloudSync = {
 
       const conflictChecks = [
         ...trips
-          .filter((trip: any) => trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId)))
+          .filter((trip: any) => dirtyTripIdSet.has(trip.id) && (trip.userId === userId || (trip.sharedWith && trip.sharedWith.includes(userId))))
           .map(async (trip: any) => {
             const remoteSnap = await getDoc(doc(db, "trips", trip.id));
             return remoteSnap.exists() && hasNewerRemoteVersion(trip, remoteSnap.data(), clientId)
@@ -152,7 +154,7 @@ export const cloudSync = {
               : null;
           }),
         ...shoppingLists
-          .filter((list: any) => list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId)))
+          .filter((list: any) => dirtyShoppingListIdSet.has(list.id) && (list.userId === userId || (list.sharedWith && list.sharedWith.includes(userId))))
           .map(async (list: any) => {
             const remoteSnap = await getDoc(doc(db, "shopping_lists", list.id));
             return remoteSnap.exists() && hasNewerRemoteVersion(list, remoteSnap.data(), clientId)

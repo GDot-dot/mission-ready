@@ -42,6 +42,8 @@ export default function App() {
   const isApplyingCloudData = useRef(false);
   const autoSyncTimer = useRef<number | null>(null);
   const backupInputRef = useRef<HTMLInputElement | null>(null);
+  const dirtyTripIds = useRef<Set<string>>(new Set());
+  const dirtyShoppingListIds = useRef<Set<string>>(new Set());
 
   // --- Dark Mode ---
   useEffect(() => {
@@ -237,6 +239,7 @@ export default function App() {
   const handleSaveTrip = (updatedTrip: Trip) => {
     if (!user) return;
     const tripWithUser = stampSyncMeta({ ...updatedTrip, userId: user.id }, clientId.current);
+    dirtyTripIds.current.add(updatedTrip.id);
     
     setTrips(prev => {
       const exists = prev.find(t => t.id === updatedTrip.id);
@@ -263,6 +266,7 @@ export default function App() {
               deletedAt: null,
               items: trip.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), checked: false }))
           };
+          dirtyTripIds.current.add(newTrip.id);
           setTrips(prev => [stampSyncMeta(newTrip, clientId.current), ...prev]);
       }
   };
@@ -280,6 +284,7 @@ export default function App() {
   const handleDeleteTrip = (e: React.MouseEvent, tripId: string) => {
     e.stopPropagation();
     if(window.confirm("確定要刪除這個行程紀錄嗎？")) {
+      dirtyTripIds.current.add(tripId);
       setTrips(prev => prev.map(t => t.id === tripId ? stampSyncMeta({ ...t, deletedAt: new Date().toISOString(), deletedByClientId: clientId.current }, clientId.current) : t));
       if(activeTripId === tripId) {
         setActiveTripId(null);
@@ -300,12 +305,26 @@ export default function App() {
     setIsSyncing(true);
     setSyncStatus('syncing');
     setSyncError('');
-    const data = { inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories, clientId: clientId.current };
+    const data = {
+      inventory,
+      trips,
+      folders,
+      groups,
+      categories,
+      bundles,
+      shoppingLists,
+      shoppingCategories,
+      clientId: clientId.current,
+      dirtyTripIds: [...dirtyTripIds.current],
+      dirtyShoppingListIds: [...dirtyShoppingListIds.current]
+    };
     try {
         const result = await cloudSync.upload(user.id, data);
         if (result.success) {
             if (options.showSuccessAlert) alert('✅ 雲端備份成功！');
             setHasUnsavedChanges(false); // Reset dirty flag
+            dirtyTripIds.current.clear();
+            dirtyShoppingListIds.current.clear();
             setSyncStatus('synced');
         } else {
             const message = JSON.stringify(result.error);
@@ -381,6 +400,8 @@ export default function App() {
       setTimeout(() => {
         isApplyingCloudData.current = false;
         setHasUnsavedChanges(true);
+        dirtyTripIds.current = new Set((data.trips || []).map((trip: Trip) => trip.id));
+        dirtyShoppingListIds.current = new Set((data.shoppingLists || []).map((list: ShoppingList) => list.id));
         setSyncStatus('pending');
         setSyncError('');
       }, 0);
@@ -680,6 +701,7 @@ export default function App() {
                         items: [],
                         groups: [{ id: DEFAULT_SHOPPING_GROUP_ID, name: '主要清單' }]
                     };
+                    dirtyShoppingListIds.current.add(newList.id);
                     setShoppingLists(prev => [stampSyncMeta(newList, clientId.current), ...prev]);
                     setActiveShoppingListId(newList.id);
                     setView('SHOPPING_LIST');
@@ -687,6 +709,7 @@ export default function App() {
                 onOpenList={(id) => { setActiveShoppingListId(id); setView('SHOPPING_LIST'); }}
                 onDeleteList={(id) => {
                     if(window.confirm("確定要刪除這個採購清單嗎？")) {
+                        dirtyShoppingListIds.current.add(id);
                         setShoppingLists(prev => prev.map(l => l.id === id ? stampSyncMeta({ ...l, deletedAt: new Date().toISOString(), deletedByClientId: clientId.current }, clientId.current) : l));
                     }
                 }}
@@ -701,6 +724,7 @@ export default function App() {
                             deletedAt: null,
                             items: list.items.map(i => ({ ...i, id: Math.random().toString(36).substring(2, 9), status: 'to_buy' }))
                         };
+                        dirtyShoppingListIds.current.add(newList.id);
                         setShoppingLists(prev => [stampSyncMeta(newList, clientId.current), ...prev]);
                     }
                 }}
@@ -713,6 +737,7 @@ export default function App() {
                     list={activeShoppingList} 
                     categories={shoppingCategories}
                     onSave={(updatedList) => {
+                        dirtyShoppingListIds.current.add(updatedList.id);
                         setShoppingLists(prev => prev.map(l => l.id === updatedList.id ? stampSyncMeta(updatedList, clientId.current) : l));
                     }}
                     onBack={() => setView('SHOPPING_DASHBOARD')}
