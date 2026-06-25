@@ -30,6 +30,7 @@ export default function App() {
   const [isSyncing, setIsSyncing] = useState(false);
   const [syncStatus, setSyncStatus] = useState<'idle' | 'pending' | 'syncing' | 'synced' | 'error'>('idle');
   const [syncError, setSyncError] = useState('');
+  const [hasCloudBaseline, setHasCloudBaseline] = useState(false);
   const [darkMode, setDarkMode] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
   
@@ -146,10 +147,39 @@ export default function App() {
       isFirstLoad.current = false;
       isApplyingCloudData.current = false;
       setHasUnsavedChanges(false);
-      setSyncStatus('idle');
-      setSyncError('');
     }, 500);
   };
+
+  const applyCloudData = useCallback((cloudData: any) => {
+    isApplyingCloudData.current = true;
+    const {
+      inventory: newInv,
+      trips: newTrips,
+      folders: newFolders,
+      groups: newGroups,
+      categories: newCats,
+      bundles: newBundles,
+      shoppingLists: newShoppingLists,
+      shoppingCategories: newShoppingCats
+    } = cloudData || {};
+
+    if(newCats) setCategories(newCats);
+    if(newBundles) setBundles(newBundles);
+    if(newInv) setInventory(newInv);
+    if(newTrips) setTrips(newTrips);
+    if(newFolders) setFolders(newFolders);
+    if(newGroups) setGroups(newGroups);
+    if(newShoppingLists) setShoppingLists(newShoppingLists);
+    if(newShoppingCats) setShoppingCategories(newShoppingCats);
+
+    setTimeout(() => {
+      isApplyingCloudData.current = false;
+      setHasUnsavedChanges(false);
+      setHasCloudBaseline(true);
+      setSyncStatus('synced');
+      setSyncError('');
+    }, 0);
+  }, []);
 
   // Persistence Effects - Mark as Dirty on Change
   const persistAndMarkDirty = (key: string, data: any) => {
@@ -174,6 +204,7 @@ export default function App() {
   // --- Handlers ---
   const handleLogin = (loggedInUser: User) => {
     isFirstLoad.current = true; // Reset flag
+    setHasCloudBaseline(false);
     setUser(loggedInUser);
     localStorage.setItem('mission_ready_active_user_id', loggedInUser.id);
     loadUserData(loggedInUser.id);
@@ -193,6 +224,7 @@ export default function App() {
     setShoppingLists([]);
     setShoppingCategories([]);
     setHasUnsavedChanges(false);
+    setHasCloudBaseline(false);
     setSyncStatus('idle');
     setSyncError('');
   };
@@ -251,6 +283,13 @@ export default function App() {
 
   const syncToCloud = useCallback(async (options: { showSuccessAlert?: boolean } = {}) => {
     if (!user || isSyncing) return;
+    if (!hasCloudBaseline) {
+        const message = '尚未完成登入後的雲端資料讀取，已暫停上傳以避免空資料覆蓋雲端。';
+        setSyncStatus('error');
+        setSyncError(message);
+        if (options.showSuccessAlert) alert(`⚠️ ${message}`);
+        return;
+    }
     setIsSyncing(true);
     setSyncStatus('syncing');
     setSyncError('');
@@ -275,7 +314,7 @@ export default function App() {
     } finally {
         setIsSyncing(false);
     }
-  }, [user, isSyncing, inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories]);
+  }, [user, isSyncing, hasCloudBaseline, inventory, trips, folders, groups, categories, bundles, shoppingLists, shoppingCategories]);
 
   const handleCloudUpload = async () => {
     await syncToCloud({ showSuccessAlert: true });
@@ -288,23 +327,8 @@ export default function App() {
     try {
         const result = await cloudSync.download(user.id, trips, shoppingLists);
         if (result.success && result.data) {
-            isApplyingCloudData.current = true;
-            const { inventory: newInv, trips: newTrips, folders: newFolders, groups: newGroups, categories: newCats, bundles: newBundles, shoppingLists: newShoppingLists, shoppingCategories: newShoppingCats } = result.data;
-            if(newCats) setCategories(newCats);
-            if(newBundles) setBundles(newBundles);
-            if(newInv) setInventory(newInv);
-            if(newTrips) setTrips(newTrips);
-            if(newFolders) setFolders(newFolders);
-            if(newGroups) setGroups(newGroups);
-            if(newShoppingLists) setShoppingLists(newShoppingLists);
-            if(newShoppingCats) setShoppingCategories(newShoppingCats);
+            applyCloudData(result.data);
             alert('✅ 資料同步完成！');
-            setTimeout(() => {
-              isApplyingCloudData.current = false;
-              setHasUnsavedChanges(false);
-              setSyncStatus('synced');
-              setSyncError('');
-            }, 0);
         } else { alert('❌ 下載失敗，找不到資料'); }
     } catch (e) { console.error(e); alert('❌ 下載發生錯誤'); } 
     finally { setIsSyncing(false); }
@@ -312,7 +336,7 @@ export default function App() {
 
   useEffect(() => {
       if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current);
-      if (!user || !hasUnsavedChanges || isSyncing || syncStatus === 'error') return;
+      if (!user || !hasCloudBaseline || !hasUnsavedChanges || isSyncing || syncStatus === 'error') return;
 
       setSyncStatus('pending');
       autoSyncTimer.current = window.setTimeout(() => {
@@ -322,7 +346,42 @@ export default function App() {
       return () => {
           if (autoSyncTimer.current) window.clearTimeout(autoSyncTimer.current);
       };
-  }, [user, hasUnsavedChanges, isSyncing, syncStatus, syncToCloud]);
+  }, [user, hasCloudBaseline, hasUnsavedChanges, isSyncing, syncStatus, syncToCloud]);
+
+  useEffect(() => {
+      if (!user) return;
+
+      let cancelled = false;
+      setIsSyncing(true);
+      setSyncStatus('syncing');
+      setSyncError('');
+
+      cloudSync.download(user.id, trips, shoppingLists)
+        .then(result => {
+          if (cancelled) return;
+          if (result.success) {
+            applyCloudData(result.data || {});
+          } else {
+            setHasCloudBaseline(false);
+            setSyncStatus('error');
+            setSyncError('登入後無法讀取雲端資料，已暫停自動上傳以避免覆蓋既有資料。');
+          }
+        })
+        .catch(error => {
+          if (cancelled) return;
+          console.error(error);
+          setHasCloudBaseline(false);
+          setSyncStatus('error');
+          setSyncError('登入後無法讀取雲端資料，已暫停自動上傳以避免覆蓋既有資料。');
+        })
+        .finally(() => {
+          if (!cancelled) setIsSyncing(false);
+        });
+
+      return () => {
+        cancelled = true;
+      };
+  }, [user, applyCloudData]);
 
   // --- Render ---
   if (!user) return <Auth onLogin={handleLogin} />;
@@ -366,7 +425,7 @@ export default function App() {
                         <button 
                             onClick={handleCloudUpload} 
                             className={`p-2 rounded-lg transition-colors relative ${hasUnsavedChanges ? 'text-blue-600 bg-blue-50 dark:text-blue-400 dark:bg-blue-900/30 ring-1 ring-blue-400' : 'text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-slate-800'}`}
-                            title={hasUnsavedChanges ? "立即同步" : "上傳"}
+                            title={!hasCloudBaseline ? "等待雲端資料載入" : hasUnsavedChanges ? "立即同步" : "上傳"}
                         >
                             <UploadCloud size={20} />
                             {hasUnsavedChanges && <span className="absolute top-1 right-1 w-2 h-2 bg-red-500 rounded-full"></span>}
@@ -393,7 +452,7 @@ export default function App() {
                 {syncStatus === 'error'
                   ? `自動同步失敗，請檢查網路後按雲端上傳重試${syncError ? `：${syncError}` : ''}`
                   : syncStatus === 'syncing'
-                    ? '正在自動同步到雲端...'
+                    ? (hasCloudBaseline ? '正在自動同步到雲端...' : '正在載入雲端資料，完成前會暫停上傳。')
                     : '變更已儲存在本機，稍後會自動同步到雲端。'}
               </span>
           </div>
