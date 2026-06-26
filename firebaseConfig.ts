@@ -1,5 +1,6 @@
 import firebase from "firebase/compat/app";
 import { getFirestore, doc, getDoc, setDoc, collection, query, where, getDocs, updateDoc, arrayUnion, arrayRemove, writeBatch } from "firebase/firestore";
+import { getAuth, createUserWithEmailAndPassword, signInWithEmailAndPassword, signOut } from "firebase/auth";
 
 // Your web app's Firebase configuration
 const firebaseConfig = {
@@ -15,6 +16,7 @@ const firebaseConfig = {
 // Initialize Firebase
 const app = firebase.initializeApp(firebaseConfig);
 const db = getFirestore(app as any);
+const auth = getAuth(app as any);
 
 const CLOUD_SCHEMA_VERSION = 2;
 const FIRESTORE_BATCH_LIMIT = 450;
@@ -73,7 +75,28 @@ const commitBatches = async (writes: Array<(batch: ReturnType<typeof writeBatch>
 };
 
 export const cloudAuth = {
-  register: async (username: string, password: string) => {
+  register: async (email: string, password: string, username?: string) => {
+    try {
+      const cleanEmail = email.trim().toLowerCase();
+      const displayName = username?.trim() || cleanEmail.split("@")[0];
+      const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+      const uid = credential.user.uid;
+      const now = new Date().toISOString();
+
+      await setDoc(doc(db, "profiles", uid), {
+        uid,
+        username: displayName,
+        email: cleanEmail,
+        createdAt: now,
+        authProvider: "firebase"
+      });
+
+      return { success: true, userId: uid, username: displayName, email: cleanEmail, authProvider: "firebase" };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  },
+  registerLegacy: async (username: string, password: string) => {
     try {
       const accountRef = doc(db, "user_accounts", username);
       const accountSnap = await getDoc(accountRef);
@@ -86,24 +109,65 @@ export const cloudAuth = {
       return { success: false, error: error.message };
     }
   },
-  login: async (username: string, password: string) => {
+  login: async (identifier: string, password: string) => {
+    const cleanIdentifier = identifier.trim();
+    if (cleanIdentifier.includes("@")) {
+      try {
+        const credential = await signInWithEmailAndPassword(auth, cleanIdentifier.toLowerCase(), password);
+        const uid = credential.user.uid;
+        const profileSnap = await getDoc(doc(db, "profiles", uid));
+        const profile = profileSnap.exists() ? profileSnap.data() : {};
+        return {
+          success: true,
+          userId: uid,
+          username: profile.username || credential.user.email || cleanIdentifier,
+          email: credential.user.email || cleanIdentifier,
+          authProvider: "firebase"
+        };
+      } catch (error: any) {
+        return { success: false, error: error.message };
+      }
+    }
+
+    return cloudAuth.loginLegacy(cleanIdentifier, password);
+  },
+  loginLegacy: async (username: string, password: string) => {
     try {
       const accountRef = doc(db, "user_accounts", username);
       const accountSnap = await getDoc(accountRef);
       if (!accountSnap.exists()) return { success: false, error: "帳號不存在" };
       
       const data = accountSnap.data();
+      if (data.disabled && data.migratedToUid) return { success: false, error: "此帳號已升級，請使用 Email 登入。" };
       if (data.password !== password) return { success: false, error: "密碼錯誤" };
-      return { success: true, userId: data.userId };
+      return { success: true, userId: data.userId, username, authProvider: "legacy" };
     } catch (error: any) {
       return { success: false, error: error.message };
     }
+  },
+  logout: async () => {
+      try {
+          await signOut(auth);
+      } catch (error) {
+          console.warn("Firebase sign out failed:", error);
+      }
   },
   findUserByUsername: async (username: string) => {
       try {
           const accountRef = doc(db, "user_accounts", username);
           const snap = await getDoc(accountRef);
-          if (snap.exists()) return { success: true, userId: snap.data().userId };
+          if (snap.exists()) {
+              const data = snap.data();
+              return { success: true, userId: data.migratedToUid || data.userId };
+          }
+
+          const profilesRef = collection(db, "profiles");
+          const usernameQuery = query(profilesRef, where("username", "==", username));
+          const emailQuery = query(profilesRef, where("email", "==", username.trim().toLowerCase()));
+          const [usernameSnap, emailSnap] = await Promise.all([getDocs(usernameQuery), getDocs(emailQuery)]);
+          const profileDoc = !usernameSnap.empty ? usernameSnap.docs[0] : (!emailSnap.empty ? emailSnap.docs[0] : null);
+          if (profileDoc) return { success: true, userId: profileDoc.id };
+
           return { success: false, error: "找不到此使用者" };
       } catch (error) {
           return { success: false, error: "搜尋失敗" };
@@ -114,9 +178,93 @@ export const cloudAuth = {
           const q = query(collection(db, "user_accounts"), where("userId", "==", userId));
           const snap = await getDocs(q);
           if (!snap.empty) return { success: true, username: snap.docs[0].id };
+          const profileSnap = await getDoc(doc(db, "profiles", userId));
+          if (profileSnap.exists()) return { success: true, username: profileSnap.data().username || profileSnap.data().email };
           return { success: false, error: "Unknown" };
       } catch (error) {
           return { success: false, error: "Error" };
+      }
+  },
+  migrateLegacyUser: async (oldUserId: string, legacyUsername: string, email: string, password: string) => {
+      try {
+          const cleanEmail = email.trim().toLowerCase();
+          const now = new Date().toISOString();
+          const credential = await createUserWithEmailAndPassword(auth, cleanEmail, password);
+          const newUid = credential.user.uid;
+
+          const oldUserRef = doc(db, "users", oldUserId);
+          const oldUserSnap = await getDoc(oldUserRef);
+          const oldUserData = oldUserSnap.exists() ? oldUserSnap.data() : null;
+
+          const writes: Array<(batch: ReturnType<typeof writeBatch>) => void> = [
+              batch => batch.set(doc(db, "profiles", newUid), {
+                  uid: newUid,
+                  username: legacyUsername,
+                  email: cleanEmail,
+                  createdAt: now,
+                  migratedFromLegacyUserId: oldUserId,
+                  migratedAt: now,
+                  authProvider: "firebase"
+              }),
+              batch => batch.set(doc(db, "user_accounts", legacyUsername), {
+                  migratedToUid: newUid,
+                  migratedAt: now,
+                  disabled: true
+              }, { merge: true })
+          ];
+
+          if (oldUserData) {
+              writes.push(batch => batch.set(doc(db, "users", newUid), stripUndefined({
+                  ...oldUserData,
+                  migratedFromLegacyUserId: oldUserId,
+                  migratedAt: now,
+                  lastUpdated: now
+              })));
+          }
+
+          const tripsSnap = await getDocs(query(collection(db, "trips"), where("userId", "==", oldUserId)));
+          tripsSnap.docs.forEach(tripDoc => {
+              writes.push(batch => batch.set(doc(db, "trips", tripDoc.id), stripUndefined({
+                  ...tripDoc.data(),
+                  userId: newUid,
+                  updatedAt: now
+              })));
+          });
+
+          const sharedTripsSnap = await getDocs(query(collection(db, "trips"), where("sharedWith", "array-contains", oldUserId)));
+          sharedTripsSnap.docs.forEach(tripDoc => {
+              const data = tripDoc.data();
+              writes.push(batch => batch.set(doc(db, "trips", tripDoc.id), stripUndefined({
+                  ...data,
+                  sharedWith: Array.from(new Set([...(data.sharedWith || []).filter((id: string) => id !== oldUserId), newUid])),
+                  updatedAt: now
+              })));
+          });
+
+          const shoppingSnap = await getDocs(query(collection(db, "shopping_lists"), where("userId", "==", oldUserId)));
+          shoppingSnap.docs.forEach(listDoc => {
+              writes.push(batch => batch.set(doc(db, "shopping_lists", listDoc.id), stripUndefined({
+                  ...listDoc.data(),
+                  userId: newUid,
+                  updatedAt: now
+              })));
+          });
+
+          const sharedShoppingSnap = await getDocs(query(collection(db, "shopping_lists"), where("sharedWith", "array-contains", oldUserId)));
+          sharedShoppingSnap.docs.forEach(listDoc => {
+              const data = listDoc.data();
+              writes.push(batch => batch.set(doc(db, "shopping_lists", listDoc.id), stripUndefined({
+                  ...data,
+                  sharedWith: Array.from(new Set([...(data.sharedWith || []).filter((id: string) => id !== oldUserId), newUid])),
+                  updatedAt: now
+              })));
+          });
+
+          await commitBatches(writes);
+
+          return { success: true, userId: newUid, username: legacyUsername, email: cleanEmail, authProvider: "firebase" };
+      } catch (error: any) {
+          return { success: false, error: error.message };
       }
   }
 };

@@ -9,7 +9,7 @@ import { CurrencyConverter } from './components/CurrencyConverter';
 import { INITIAL_INVENTORY, INITIAL_FOLDERS, INITIAL_GROUPS, INITIAL_CATEGORIES, INITIAL_BUNDLES, INITIAL_SHOPPING_CATEGORIES, DEFAULT_FOLDER_ID, DEFAULT_GROUP_ID, DEFAULT_TRIP_GROUP_ID, DEFAULT_SHOPPING_GROUP_ID, TRIP_TYPES } from './constants';
 import { InventoryItem, Trip, ViewState, User, InventoryFolder, InventoryGroup, InventoryCategory, InventoryBundle, ShoppingList, ShoppingCategory } from './types';
 import { ListChecks, Plus, Calendar, Briefcase, LogOut, User as UserIcon, UploadCloud, DownloadCloud, Loader2, Moon, Sun, Search, Copy, X, AlertCircle, ShoppingCart, DollarSign } from 'lucide-react';
-import { cloudSync } from './firebaseConfig';
+import { cloudAuth, cloudSync } from './firebaseConfig';
 import { getClientId, isDeleted, stampSyncMeta } from './syncUtils';
 
 const AUTO_SYNC_DELAY_MS = 2500;
@@ -35,6 +35,10 @@ export default function App() {
   const clientId = useRef(getClientId());
   const [darkMode, setDarkMode] = useState(false);
   const [globalSearch, setGlobalSearch] = useState('');
+  const [upgradeEmail, setUpgradeEmail] = useState('');
+  const [upgradePassword, setUpgradePassword] = useState('');
+  const [isUpgradingAccount, setIsUpgradingAccount] = useState(false);
+  const [upgradeError, setUpgradeError] = useState('');
   
   // New: Unsaved Changes Tracking
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -73,7 +77,12 @@ export default function App() {
     if (savedUserId && users.length > 0) {
       const activeUser = users.find((u: any) => u.id === savedUserId);
       if (activeUser) {
-        handleLogin({ id: activeUser.id, username: activeUser.username });
+        handleLogin({
+          id: activeUser.id,
+          username: activeUser.username,
+          email: activeUser.email,
+          authProvider: activeUser.authProvider || 'legacy'
+        });
       }
     }
   }, []);
@@ -234,6 +243,49 @@ export default function App() {
     setHasCloudBaseline(false);
     setSyncStatus('idle');
     setSyncError('');
+    setUpgradeEmail('');
+    setUpgradePassword('');
+    setUpgradeError('');
+    cloudAuth.logout();
+  };
+
+  const handleUpgradeLegacyAccount = async () => {
+    if (!user || user.authProvider !== 'legacy') return;
+    if (!upgradeEmail.trim() || !upgradePassword.trim()) {
+      setUpgradeError('請輸入 Email 與新密碼');
+      return;
+    }
+
+    setIsUpgradingAccount(true);
+    setUpgradeError('');
+
+    try {
+      const result = await cloudAuth.migrateLegacyUser(user.id, user.username, upgradeEmail, upgradePassword);
+      if (result.success && result.userId) {
+        const upgradedUser = {
+          id: result.userId,
+          username: result.username || user.username,
+          email: result.email || upgradeEmail,
+          authProvider: 'firebase' as const
+        };
+        const storedUsers = JSON.parse(localStorage.getItem('mission_ready_users') || '[]');
+        localStorage.setItem('mission_ready_users', JSON.stringify([
+          ...storedUsers.filter((u: any) => u.id !== user.id && u.id !== upgradedUser.id),
+          upgradedUser
+        ]));
+        setUpgradeEmail('');
+        setUpgradePassword('');
+        handleLogin(upgradedUser);
+        alert('✅ 帳號已升級，資料已轉移完成。之後請使用 Email 登入。');
+      } else {
+        setUpgradeError(result.error || '升級失敗');
+      }
+    } catch (error: any) {
+      console.error(error);
+      setUpgradeError(error.message || '升級發生錯誤');
+    } finally {
+      setIsUpgradingAccount(false);
+    }
   };
 
   const handleSaveTrip = (updatedTrip: Trip) => {
@@ -557,6 +609,25 @@ export default function App() {
                     ? (hasCloudBaseline ? '正在自動同步到雲端...' : '正在載入雲端資料，完成前會暫停上傳。')
                     : '變更已儲存在本機，稍後會自動同步到雲端。'}
               </span>
+          </div>
+      )}
+
+      {user.authProvider === 'legacy' && (
+          <div className="bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800 px-4 py-3">
+              <div className="max-w-7xl mx-auto flex flex-col lg:flex-row lg:items-center gap-3">
+                  <div className="flex-1">
+                      <div className="font-bold text-amber-900 dark:text-amber-100 text-sm">建議升級帳號安全性</div>
+                      <div className="text-xs text-amber-800 dark:text-amber-200">目前是舊帳號登入。升級後會改用 Firebase Auth，資料會自動轉移，之後請用 Email 登入。</div>
+                      {upgradeError && <div className="text-xs text-red-600 dark:text-red-300 mt-1">{upgradeError}</div>}
+                  </div>
+                  <div className="flex flex-col sm:flex-row gap-2 lg:w-auto">
+                      <input value={upgradeEmail} onChange={e => setUpgradeEmail(e.target.value)} type="email" placeholder="Email" className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500" />
+                      <input value={upgradePassword} onChange={e => setUpgradePassword(e.target.value)} type="password" placeholder="新密碼" className="bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-700 rounded-lg px-3 py-2 text-sm text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500" />
+                      <button onClick={handleUpgradeLegacyAccount} disabled={isUpgradingAccount} className="px-4 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold disabled:opacity-60 whitespace-nowrap">
+                          {isUpgradingAccount ? '升級中...' : '升級帳號'}
+                      </button>
+                  </div>
+              </div>
           </div>
       )}
 

@@ -15,6 +15,8 @@ export interface SyncMeta {
 export interface User {
   id: string;
   username: string;
+  email?: string;
+  authProvider?: 'firebase' | 'legacy';
 }
 
 export interface InventoryFolder {
